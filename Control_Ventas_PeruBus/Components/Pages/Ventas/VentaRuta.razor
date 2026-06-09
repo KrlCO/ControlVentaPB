@@ -1,0 +1,643 @@
+@page "/devcontrolventapb"
+@page "/rpt/8f2kq9m1"
+@rendermode InteractiveServer
+@using Control_Ventas_PeruBus.Configuration
+@using Control_Ventas_PeruBus.Models.DTOs
+@using Control_Ventas_PeruBus.Services.Interfaces
+@using System.Linq
+@using System.Text.RegularExpressions
+@using System.Text.Json
+@using Microsoft.AspNetCore.Components.Web
+@using MudBlazor
+@inject IVentaRutaService VentaRutaService
+@inject Microsoft.Extensions.Logging.ILogger<VentaRuta> Logger
+@inject ISnackbar Snackbar
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+<MudPaper Class="p-6">
+
+
+    <MudGrid Spacing="2"> 
+        
+
+        <MudItem xs="12" sm="6" md="2">
+            <MudTextField @bind-Value="Usuario" 
+                          Label="Usuario" 
+                          Immediate="true" 
+                          TextUpdateSuppression="false"
+                          MaxLength="8" 
+                          Variant="Variant.Outlined" 
+                          Margin="Margin.Dense"
+                          OnKeyUp="OnFiltroKeyUp"
+                          UserAttributes="@(new Dictionary<string, object> 
+                          { 
+                              { "onkeypress", "return /[a-zA-Z]/i.test(event.key)" }, 
+                              { "maxlength", "8" },
+                              { "style", "text-transform:uppercase" },
+                              { "oninput", "this.value = this.value.toUpperCase().replace(/[^A-Za-z]/g,'').slice(0,8)" } 
+                          })" />
+        </MudItem>
+
+        <MudItem xs="12" sm="6" md="2">
+            <MudTextField @bind-Value="SerieLiquidacion"
+                          Label="Serie liquidación"
+                          Placeholder="Ej: 0011"
+                          Immediate="true"
+                          MaxLength="4"
+                          Variant="Variant.Outlined"
+                          Margin="Margin.Dense"
+                          OnKeyUp="OnFiltroKeyUp"
+                          UserAttributes="@(new Dictionary<string, object> 
+                          { 
+                              { "onkeypress", "return /[0-9]/.test(event.key)" }, 
+                              { "oninput", "this.value=this.value.replace(/[^0-9]/g,'').slice(0,4)" } 
+                          })" />
+        </MudItem>
+        
+
+        <MudItem xs="12" sm="6" md="2">
+            <MudTextField @bind-Value="CorrelativoLiquidacion"
+                          Label="Correlativo liquidación"
+                          Placeholder="Ej: 250408"
+                          Immediate="true"
+                          MaxLength="10"
+                          Variant="Variant.Outlined"
+                          Margin="Margin.Dense"
+                          OnKeyUp="OnFiltroKeyUp"
+                          UserAttributes="@(new Dictionary<string, object> 
+                          { 
+                              { "onkeypress", "return /[0-9]/.test(event.key)" }, 
+                              { "oninput", "this.value=this.value.replace(/[^0-9]/g,'').slice(0,10)" } 
+                          })" />
+        </MudItem>
+
+        <MudItem xs="12" sm="6" md="2">
+            <MudTextField @bind-Value="MetodoPago" 
+                          Label="Método de Pago" 
+                          Placeholder="Ej: QR, EFE o TODO"
+                          Immediate="true" 
+                          Variant="Variant.Outlined" 
+                          Margin="Margin.Dense"
+                          MaxLength="20"
+                          OnKeyUp="OnFiltroKeyUp" 
+                          UserAttributes="@(new Dictionary<string, object> 
+                          { 
+                              { "onkeypress", "return /[a-zA-Z]/i.test(event.key)" }, 
+                              { "maxlength", "20" },
+                              { "style", "text-transform:uppercase" },
+                              { "oninput", "this.value = this.value.toUpperCase().replace(/[^A-Za-z\\s]/g,'').slice(0,20)" } 
+                          })" />
+        </MudItem>
+
+
+        <MudItem xs="12" sm="6" md="2">
+            <div class="d-flex align-center">
+                <MudDatePicker Label="F. Liquidación"
+                               Date="@_fechaLiquidacion"
+                               DateChanged="OnFechaLiquiChanged"
+                               Variant="Variant.Outlined"
+                               Margin="Margin.Dense"
+                               PickerVariant="PickerVariant.Dialog"
+                               OpenTo="OpenTo.Date"
+                               Style="flex-grow: 1;" /> 
+                      <MudIconButton Icon="@Icons.Material.Filled.Clear"
+                               Color="Color.Default"
+                               Size="Size.Medium"
+                               Variant="Variant.Outlined"
+                               Class="ml-2"
+                               OnClick="LimpiarFechaLiqui" />
+                </div>
+        </MudItem>
+
+        <MudItem xs="12" sm="6" md="2">
+            <MudSelect T="string"
+                       Label="Empresa"
+                       Dense="true"
+                       Margin="Margin.Dense"
+                       Clearable="true"
+                       Placeholder="Todas"
+                       @bind-Value="Empresa"
+                       Immediate="true">
+                <MudSelectItem Value="@("01")">PERU BUS</MudSelectItem>
+                <MudSelectItem Value="@("39")">EXPRESO SUR BUS</MudSelectItem>
+            </MudSelect>
+        </MudItem>
+    </MudGrid>
+                             
+    <MudStack Row="true" Spacing="2" Class="mt-5">
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Buscar">Liquidaciones 30 dias</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Success" OnClick="BuscarDiario">Liquidaciones del día</MudButton>
+        <MudButton Variant="Variant.Outlined" Color="Color.Info" Disabled="@(!_lista?.Any() ?? true)" OnClick="ExportarXlsx">Exportar excel</MudButton>
+    </MudStack>
+
+    @if (_cargando)
+    {
+        <MudProgressCircular Class="mt-4" Indeterminate="true" Color="Color.Primary" />
+    }
+    else if (_lista != null && _lista.Any())
+    {
+        <MudTable ServerData="LoadServerData" Dense="true" Hover="true" Striped="true" Class="mt-4" RowsPerPage="@_rowsPerPage">
+
+            <HeaderContent>
+                <MudTh>Boleto</MudTh>
+                <MudTh>Origen</MudTh>
+                <MudTh>Destino</MudTh>
+                <MudTh>Empresa</MudTh>
+                <MudTh>
+                    <MudTableSortLabel T="VentaRutaDTO" SortLabel="LIQUIDACION">Liquidación</MudTableSortLabel>
+                </MudTh>
+                <MudTh>ID Transac.</MudTh>
+                <MudTh>Hora Trans.</MudTh>
+                <MudTh>Método Pago</MudTh>
+                <MudTh>Importe</MudTh>
+                <MudTh>Importe Transac.</MudTh>
+                <MudTh>Diferencia</MudTh>
+                <MudTh>
+                    <MudTableSortLabel T="VentaRutaDTO" SortLabel="FECHA_LIQUIDACION">Fecha Liqui.</MudTableSortLabel>
+                </MudTh>
+            </HeaderContent>
+
+            <RowTemplate>
+                <MudTd>@context.DOCUMENTO</MudTd>
+                <MudTd>@context.ORIGEN</MudTd>
+                <MudTd>@context.DESTINO</MudTd>
+                <MudTd>@context.EMPRESA</MudTd>
+                <MudTd>@context.LIQUIDACION</MudTd>
+                <MudTd>@context.ID_TRANSACCION</MudTd>
+                <MudTd>@context.HORA_TRANSACCION?.ToString("HH:mm")</MudTd>
+                <MudTd>@context.METODO_PAGO</MudTd>
+                <MudTd>@context.SUMA_IMPORTE</MudTd>
+                <MudTd>@context.SUMA_IMPORTE_TRNSACCION</MudTd>
+                <MudTd>@context.SUMA_DIFERENCIA</MudTd>
+                <MudTd>
+                    @if (context.FECHA_LIQUIDACION.HasValue)
+                    {
+                        @context.FECHA_LIQUIDACION.Value.ToString("yyyy-MM-dd HH:mm")
+                    }
+                    else if (context.FECHA_PROCESO.HasValue)
+                    {
+                        @context.FECHA_PROCESO.Value.ToString("yyyy-MM-dd HH:mm")
+                    }
+                    else
+                    {
+                        @string.Empty
+                    }
+                </MudTd>
+            </RowTemplate>
+
+            <FooterContent>
+                <MudTd></MudTd>
+                <MudTd></MudTd>
+                <MudTd></MudTd>
+                <MudTd></MudTd>
+                <MudTd></MudTd>
+                <MudTd></MudTd>
+                <MudTd></MudTd>
+                <MudTd>Totales</MudTd>
+                <MudTd>@_totalImporte.ToString("N2")</MudTd>
+                <MudTd>@_totalTransaccion.ToString("N2")</MudTd>
+                <MudTd>@_totalDiferencia.ToString("N2")</MudTd>
+                <MudTd></MudTd>
+            </FooterContent>
+
+            <PagerContent>
+                <MudTablePager PageSizeOptions="@_rowsPerPageOptions" />
+            </PagerContent>
+
+        </MudTable>
+    }
+    else if (_lista != null && !_lista.Any())
+    {
+        <MudText Class="mt-4" Typo="Typo.subtitle2">Sin resultados</MudText>
+    }
+
+</MudPaper>
+
+@code {
+    private string? _usuario;
+    private string? _liquidacion;
+    private string? _metodoPago;
+    private string? _empresa = "01";
+    private DateTime? _fechaLiquidacion;
+    private IEnumerable<VentaRutaDTO>? _lista;
+    private bool _cargando;
+    private CancellationTokenSource? _debounceCts;
+    private int _clicks;
+    private int _rowsPerPage = 500;
+    private int[] _rowsPerPageOptions = new[] { 10, 20, 50, 100, 200, 500, 1000 };
+    private decimal _totalImporte;
+    private decimal _totalTransaccion;
+    private decimal _totalDiferencia;
+    private readonly Dictionary<string, object> _usuarioAttrs = new()
+    {
+        {"id", "usuarioInput"},
+        {"onkeypress", "return restrictToLetters(event)"},
+        {"onpaste", "return inputFilters.pasteLetters(event,this,8)"},
+        {"oninput", "this.value=this.value.replace(/[^A-Za-z]/g,'').slice(0,8)"}
+    };
+    private readonly Dictionary<string, object> _liquidacionAttrs = new()
+    {
+        {"id", "liquidacionInput"},
+        {"onkeydown", "return inputFilters.allowLiquidacion(event,this)"},
+        {"onpaste", "return inputFilters.pasteLiquidacion(event,this)"}
+    };
+    
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await JS.InvokeVoidAsync("attachStrictFilter", "usuarioInput", "letters", 8);
+        }
+    }
+
+    private string? _usuarioBound;
+    public string? Usuario
+    {
+        get => _usuarioBound;
+        set
+        {
+            var src = value ?? string.Empty;
+            var cleaned = Regex.Replace(src, "[^a-zA-Z]", string.Empty).ToUpperInvariant();
+            if (cleaned.Length > 8) cleaned = cleaned.Substring(0, 8);
+            _usuarioBound = cleaned;
+            _usuario = cleaned;
+        }
+    }
+
+    private string? _metodoPagoBound;
+    public string? MetodoPago
+    {
+        get => _metodoPagoBound;
+        set
+        {
+            var src = value ?? string.Empty;
+            var cleaned = Regex.Replace(src, "[^a-zA-Z]", string.Empty).ToUpperInvariant();
+            if (cleaned.Length > 20) cleaned = cleaned.Substring(0, 20);
+            _metodoPagoBound = cleaned;
+            _metodoPago = cleaned;
+        }
+    }
+
+    private string? _liquidacionBound;
+    public string? Liquidacion
+    {
+        get => _liquidacionBound;
+        set
+        {
+            var raw = value ?? string.Empty;
+            var digits = Regex.Replace(raw, "[^0-9]", string.Empty);
+
+            if (string.IsNullOrEmpty(digits))
+            {
+                _liquidacionBound = string.Empty;
+                _liquidacion = string.Empty;
+                return;
+            }
+
+            if (digits.Length <= 4)
+            {
+                _liquidacionBound = digits;
+                _liquidacion = digits;
+                return;
+            }
+
+            var serie = digits.Substring(0, 4);
+            var corr = digits.Substring(4);
+            if (corr.Length > 10) corr = corr.Substring(0, 10);
+            var corrPadded = corr.PadLeft(10, '0');
+            var formatted = $"{serie}-{corrPadded}";
+
+            _liquidacionBound = formatted;
+            _liquidacion = formatted;
+        }
+    }
+
+    private string? _serieLiquidacion;
+    public string? SerieLiquidacion
+    {
+        get => _serieLiquidacion;
+        set
+        {
+            var d = Regex.Replace(value ?? string.Empty, "[^0-9]", string.Empty);
+            if (d.Length > 4) d = d.Substring(0, 4);
+            _serieLiquidacion = d;
+            UpdateLiquidacionFromParts();
+        }
+    }
+
+    private string? _correlativoLiquidacion;
+    public string? CorrelativoLiquidacion
+    {
+        get => _correlativoLiquidacion;
+        set
+        {
+            var d = Regex.Replace(value ?? string.Empty, "[^0-9]", string.Empty);
+            if (d.Length > 10) d = d.Substring(0, 10);
+            _correlativoLiquidacion = d;
+            UpdateLiquidacionFromParts();
+        }
+    }
+
+    private void UpdateLiquidacionFromParts()
+    {
+        var serie = _serieLiquidacion ?? string.Empty;
+        var corr = _correlativoLiquidacion ?? string.Empty;
+        if (serie.Length == 4 && corr.Length > 0)
+        {
+            var padded = corr.PadLeft(10, '0');
+            var formatted = $"{serie}-{padded}";
+            _liquidacionBound = formatted;
+            _liquidacion = formatted;
+        }
+        else
+        {
+            _liquidacionBound = string.IsNullOrEmpty(serie) && string.IsNullOrEmpty(corr) ? string.Empty : serie + (string.IsNullOrEmpty(corr) ? string.Empty : "-" + corr);
+            _liquidacion = _liquidacionBound;
+        }
+    }
+    private void OnUsuarioChanged(string value)
+    {
+        _usuario = SanitizeUsuario(value);
+        StateHasChanged();
+    }
+    private void OnLiquidacionChanged(string value)
+    {
+        _liquidacion = SanitizeLiquidacion(value);
+        StateHasChanged();
+    }
+    private void OnMetodoChanged(string value)
+    {
+        _metodoPago = SanitizeMetodo(value);
+        StateHasChanged();
+    }
+
+    private async Task Buscar()
+    {
+        Logger.LogInformation("[UI] Click Buscar. Usuario='{Usuario}'", _usuario ?? "<null>");
+        if (string.IsNullOrWhiteSpace(_usuario))
+        {
+            Logger.LogWarning("[UI] Buscar cancelado: usuario vacío");
+            Snackbar.Add("Ingrese un usuario", Severity.Warning);
+            return;
+        }
+        if (_cargando)
+        {
+            Logger.LogInformation("[UI] Buscar ignorado: carga en curso");
+            Snackbar.Add("Carga en curso...", Severity.Info);
+            return;
+        }
+
+        _usarCacheDiaria = false;
+        _cargando = true;
+        Logger.LogInformation("[UI] Buscando... usuario='{Usuario}'", _usuario);
+        Snackbar.Add("Buscando...", Severity.Info);
+        StateHasChanged();
+        var metodoArg = string.IsNullOrWhiteSpace(_metodoPago) ? null : _metodoPago!.Trim().ToUpperInvariant();
+        var empresaArg = _empresa?.Trim();
+        _lista = await VentaRutaService.ObtenerVentasAsync(_usuario?.Trim(), empresaArg, null, null, null, _liquidacion?.Trim(), metodoArg, _fechaLiquidacion);
+        _lista = _lista?.OrderByDescending(x => x.FECHA_LIQUIDACION ?? DateTime.MinValue).ToList();
+        _totalImporte = _lista?.Sum(x => x.SUMA_IMPORTE) ?? 0m;
+        _totalTransaccion = _lista?.Sum(x => x.SUMA_IMPORTE_TRNSACCION) ?? 0m;
+        _totalDiferencia = _lista?.Sum(x => x.SUMA_DIFERENCIA) ?? 0m;
+        _cargando = false;
+        Logger.LogInformation("[UI] Datos recibidos: {Count} filas", _lista?.Count() ?? -1);
+        if (_lista is null || !_lista.Any())
+        {
+            Snackbar.Add("Sin resultados", Severity.Info);
+        }
+        StateHasChanged();
+    }
+
+    private async Task BuscarDiario()
+    {
+        Logger.LogInformation("[UI] Click Diario. Usuario='{Usuario}'", _usuario ?? "<null>");
+        if (string.IsNullOrWhiteSpace(_usuario))
+        {
+            Snackbar.Add("Ingrese un usuario", Severity.Warning);
+            return;
+        }
+        if (_cargando)
+        {
+            Snackbar.Add("Carga en curso...", Severity.Info);
+            return;
+        }
+        _cargando = true;
+        Snackbar.Add("Buscando diario...", Severity.Info);
+        StateHasChanged();
+        var baseList = await VentaRutaService.ObtenerVentasDiariasAsync(_usuario.Trim());
+        _listaBaseDiaria = baseList?.ToList();
+        _usarCacheDiaria = true;
+        await FiltrarSobreCacheDiaria();
+        _cargando = false;
+        StateHasChanged();
+    }
+
+    private void OnFiltroKeyUp(KeyboardEventArgs _)
+    {
+        _usuario = SanitizeUsuario(_usuario);
+        _liquidacion = SanitizeLiquidacion(_liquidacion);
+        _metodoPago = SanitizeMetodo(_metodoPago);
+        Logger.LogInformation("[UI] KeyUp filtros usuario='{Usuario}' liquidacion='{Liquidacion}' metodo='{Metodo}' fecha='{Fecha}'", _usuario ?? "<null>", _liquidacion ?? "<null>", _metodoPago ?? "<null>", _fechaLiquidacion?.ToString("yyyy-MM-dd") ?? "<null>");
+        DebounceBuscar();
+    }
+
+    private void OnFechaLiquiChanged(DateTime? value)
+    {
+        _fechaLiquidacion = value;
+        DebounceBuscar();
+    }
+
+    public string? Empresa
+    {
+        get => _empresa;
+        set
+        {
+            var v = (value ?? string.Empty).Trim();
+            _empresa = v == "01" || v == "39" ? v : null;
+            DebounceBuscar();
+        }
+    }
+
+    private void DebounceBuscar()
+    {
+        if (_debounceCts != null)
+        {
+            _debounceCts.Cancel();
+            Logger.LogInformation("[UI] Debounce cancelado");
+        }
+        _debounceCts = new CancellationTokenSource();
+        var token = _debounceCts.Token;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(500, token);
+                if (token.IsCancellationRequested) return;
+                if (_usarCacheDiaria)
+                {
+                    Logger.LogInformation("[UI] Debounce ejecuta filtro diario");
+                    await InvokeAsync(FiltrarSobreCacheDiaria);
+                }
+                else
+                {
+                    Logger.LogInformation("[UI] Debounce ejecuta Buscar");
+                    await InvokeAsync(Buscar);
+                }
+            }
+            catch (TaskCanceledException) { }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "[UI] Error en debounce");
+            }
+        }, token);
+    }
+
+    private void TestClick()
+    {
+        _clicks++;
+        Snackbar.Add($"Click test {_clicks}", Severity.Success);
+        StateHasChanged();
+    }
+
+    private void ExportarXlsx()
+    {
+        var url = new System.Text.StringBuilder("api/ventaruta/export?");
+        if (!string.IsNullOrWhiteSpace(_usuario)) url.Append($"usuario={Uri.EscapeDataString(_usuario.Trim())}&");
+        if (!string.IsNullOrWhiteSpace(_liquidacion)) url.Append($"liquidacion={Uri.EscapeDataString(_liquidacion.Trim())}&");
+        if (!string.IsNullOrWhiteSpace(_metodoPago)) url.Append($"metodoPago={Uri.EscapeDataString(_metodoPago.Trim().ToUpperInvariant())}&");
+        if (!string.IsNullOrWhiteSpace(_empresa)) url.Append($"empresa={Uri.EscapeDataString(_empresa.Trim())}&");
+        if (_fechaLiquidacion.HasValue) url.Append($"fechaLiquidacion={_fechaLiquidacion:yyyy-MM-dd}&");
+        if (_usarCacheDiaria) url.Append("diario=true&");
+        var finalUrl = url.ToString().TrimEnd('&');
+        JS.InvokeVoidAsync("open", finalUrl, "_blank");
+    }
+
+    private bool _usarCacheDiaria;
+
+    private List<VentaRutaDTO>? _listaBaseDiaria;
+
+    private async Task FiltrarSobreCacheDiaria()
+    {
+        var baseList = _listaBaseDiaria;
+        if (baseList is null || !baseList.Any())
+        {
+            Snackbar.Add("Sin resultados", Severity.Info);
+            return;
+        }
+
+        IEnumerable<VentaRutaDTO> query = baseList;
+        query = query.Where(x => RutaOperacionWindow.Contains(x.FECHA_LIQUIDACION ?? x.FECHA_PROCESO ?? x.HORA_TRANSACCION));
+        if (!string.IsNullOrWhiteSpace(_empresa))
+            query = query.Where(x => (x.EMPRESA ?? string.Empty).Trim() == _empresa!.Trim());
+        if (!string.IsNullOrWhiteSpace(_liquidacion))
+            query = query.Where(x => (x.LIQUIDACION ?? string.Empty).Trim() == _liquidacion!.Trim());
+        var metodoPagoNormalizado = NormalizarMetodoPago(_metodoPago);
+        if (string.Equals(metodoPagoNormalizado, "SOLO EFECTIVO", StringComparison.OrdinalIgnoreCase))
+            query = query.Where(x => !EsMetodoNoEfectivo(x.METODO_PAGO));
+        else if (string.Equals(metodoPagoNormalizado, "NO EFECTIVO", StringComparison.OrdinalIgnoreCase))
+            query = query.Where(x => EsMetodoNoEfectivo(x.METODO_PAGO));
+        else if (!string.Equals(metodoPagoNormalizado, "TODOS", StringComparison.OrdinalIgnoreCase))
+            query = query.Where(x => string.Equals((x.METODO_PAGO ?? string.Empty).Trim(), metodoPagoNormalizado, StringComparison.OrdinalIgnoreCase));
+        if (_fechaLiquidacion.HasValue)
+            query = query.Where(x => (x.FECHA_LIQUIDACION?.Date ?? x.FECHA_PROCESO?.Date ?? DateTime.MinValue.Date) == _fechaLiquidacion.Value.Date);
+
+        _lista = query.OrderByDescending(x => x.FECHA_LIQUIDACION ?? DateTime.MinValue).ToList();
+        _totalImporte = _lista.Sum(x => x.SUMA_IMPORTE);
+        _totalTransaccion = _lista.Sum(x => x.SUMA_IMPORTE_TRNSACCION);
+        _totalDiferencia = _lista.Sum(x => x.SUMA_DIFERENCIA);
+        StateHasChanged();
+    }
+
+    private Task<TableData<VentaRutaDTO>> LoadServerData(TableState state, CancellationToken token)
+    {
+        var total = _lista?.Count() ?? 0;
+        if (total == 0)
+            return Task.FromResult(new TableData<VentaRutaDTO> { TotalItems = 0, Items = Array.Empty<VentaRutaDTO>() });
+
+        IEnumerable<VentaRutaDTO> query = _lista!;
+        if (state.SortDirection != SortDirection.None && !string.IsNullOrWhiteSpace(state.SortLabel))
+        {
+            if (state.SortLabel == "LIQUIDACION")
+            {
+                Func<VentaRutaDTO, (long keyNum, string keyStr)> keySelector = x =>
+                {
+                    if (long.TryParse(x.LIQUIDACION?.Trim(), out var n)) return (n, x.LIQUIDACION ?? string.Empty);
+                    return (long.MinValue, x.LIQUIDACION ?? string.Empty);
+                };
+                query = state.SortDirection == SortDirection.Ascending
+                    ? query.OrderBy(keySelector)
+                    : query.OrderByDescending(keySelector);
+            }
+            else if (state.SortLabel == "FECHA_LIQUIDACION")
+            {
+                query = state.SortDirection == SortDirection.Ascending
+                    ? query.OrderBy(x => x.FECHA_LIQUIDACION ?? DateTime.MinValue)
+                    : query.OrderByDescending(x => x.FECHA_LIQUIDACION ?? DateTime.MinValue);
+            }
+        }
+
+        var skip = state.Page * state.PageSize;
+        var items = query.Skip(skip).Take(state.PageSize).ToList();
+        return Task.FromResult(new TableData<VentaRutaDTO> { TotalItems = total, Items = items });
+    }
+
+    
+    private void LimpiarFechaLiqui()
+    {
+        _fechaLiquidacion = null;
+        DebounceBuscar();
+        StateHasChanged();
+    }
+ 
+    private static string SanitizeUsuario(string? s)
+    {
+        var t = new string((s ?? string.Empty).Where(char.IsLetter).Take(8).ToArray());
+        return t.ToUpperInvariant();
+    }
+
+    private static string SanitizeMetodo(string? s)
+    {
+        var t = new string((s ?? string.Empty).Where(ch => char.IsLetter(ch) || char.IsWhiteSpace(ch)).Take(20).ToArray());
+        return t.ToUpperInvariant();
+    }
+
+    private static string? NormalizarMetodoPago(string? metodoPago)
+    {
+        var normalized = (metodoPago ?? string.Empty).Trim().ToUpperInvariant();
+        if (string.IsNullOrWhiteSpace(normalized) || normalized == "QR")
+            return "NO EFECTIVO";
+        if (normalized == "EFE" || normalized == "EFECTIVO")
+            return "SOLO EFECTIVO";
+        if (normalized == "TODO" || normalized == "TODOS")
+            return "TODOS";
+        return normalized;
+    }
+
+    private static bool EsMetodoEfectivoRegistrado(string? metodoPago)
+    {
+        var normalized = (metodoPago ?? string.Empty).Trim().ToUpperInvariant();
+        return normalized == "EFECTIVO" || normalized == "EFE";
+    }
+
+    private static bool EsMetodoNoEfectivo(string? metodoPago)
+    {
+        var normalized = (metodoPago ?? string.Empty).Trim().ToUpperInvariant();
+        return !string.IsNullOrWhiteSpace(normalized) && !EsMetodoEfectivoRegistrado(normalized);
+    }
+
+    private static string SanitizeLiquidacion(string? s)
+    {
+        var raw = new string((s ?? string.Empty).Where(ch => char.IsDigit(ch) || ch == '-').ToArray());
+        var parts = raw.Split('-', 2);
+        var p1 = parts.Length > 0 ? parts[0] : string.Empty;
+        var p2 = parts.Length > 1 ? parts[1] : string.Empty;
+        if (p1.Length > 4) p1 = p1.Substring(0, 4);
+        if (p2.Length > 10) p2 = p2.Substring(0, 10);
+        var hyphen = (raw.Contains('-') || p2.Length > 0) && p1.Length > 0 ? "-" : string.Empty;
+        var formatted = p1 + hyphen + p2;
+        if (formatted.Length > 15) formatted = formatted.Substring(0, 15);
+        return formatted;
+    }
+}

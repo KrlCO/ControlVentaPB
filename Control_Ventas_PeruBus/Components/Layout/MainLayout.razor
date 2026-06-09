@@ -1,0 +1,75 @@
+@inherits LayoutComponentBase
+@implements IDisposable
+@inject NavigationManager NavigationManager
+
+<div class="page">
+    <MudThemeProvider />
+    <MudDialogProvider />
+    <MudSnackbarProvider />
+    <MudPopoverProvider />
+
+    @if (!IsDirectAccessRoute)
+    {
+        <div class="sidebar">
+            <NavMenu />
+        </div>
+    }
+
+    <main>
+        <div class="top-row px-4 d-flex justify-space-between align-center">
+            <span>@CurrentModuleTitle</span>
+            <a href="devcontrolventapb" target="">Krl08</a>
+        </div>
+
+        <article class="content px-4">
+            @Body
+        </article>
+    </main>
+</div>
+
+<div id="blazor-error-ui">
+    An unhandled error has occurred.
+    <a href="" class="reload">Reload</a>
+    <a class="dismiss">🗙</a>
+</div>
+
+@code {
+    protected override void OnInitialized()
+    {
+        NavigationManager.LocationChanged += OnLocationChanged;
+    }
+
+    private bool IsDirectAccessRoute
+    {
+        get
+        {
+            var relativePath = NavigationManager.ToBaseRelativePath(NavigationManager.Uri).Trim('/').ToLowerInvariant();
+            return relativePath == "rpt/8f2kq9m1" || relativePath == "rpt/4t7vpx2c";
+        }
+    }
+
+    private string CurrentModuleTitle
+    {
+        get
+        {
+            var relativePath = NavigationManager.ToBaseRelativePath(NavigationManager.Uri).Trim('/').ToLowerInvariant();
+            return relativePath switch
+            {
+                "devcontrolventapb" => "Panel Developer",
+                "rpt/8f2kq9m1" => "Control Venta Ruta",
+                "rpt/4t7vpx2c" => "Control Venta Agencia",
+                _ => "Control Ventas"
+            };
+        }
+    }
+
+    private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+    {
+        InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        NavigationManager.LocationChanged -= OnLocationChanged;
+    }
+}

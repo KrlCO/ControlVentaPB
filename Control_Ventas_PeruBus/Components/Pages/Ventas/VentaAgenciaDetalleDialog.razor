@@ -1,0 +1,134 @@
+@using Control_Ventas_PeruBus.Models.DTOs
+@using MudBlazor
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">Detalle del documento @Venta?.NU_DOCU</MudText>
+    </TitleContent>
+    <DialogContent>
+        @if (Venta is null)
+        {
+            <MudText>No hay información para mostrar.</MudText>
+        }
+        else
+        {
+            <MudGrid Spacing="2">
+                <MudItem xs="12" md="6">
+                    <MudPaper Class="pa-4" Outlined="true">
+                        <MudText Typo="Typo.subtitle1" Class="mb-2">Documento</MudText>
+                        <MudTable Dense="true" Hover="false" Bordered="false" Elevation="0" Items="_documentoInfo">
+                            <RowTemplate>
+                                <MudTd><b>@context.Label</b></MudTd>
+                                <MudTd>@context.Value</MudTd>
+                            </RowTemplate>
+                        </MudTable>
+                    </MudPaper>
+                </MudItem>
+
+                <MudItem xs="12" md="6">
+                    <MudPaper Class="pa-4" Outlined="true">
+                        <MudText Typo="Typo.subtitle1" Class="mb-2">Viaje</MudText>
+                        <MudTable Dense="true" Hover="false" Bordered="false" Elevation="0" Items="_viajeInfo">
+                            <RowTemplate>
+                                <MudTd><b>@context.Label</b></MudTd>
+                                <MudTd>@context.Value</MudTd>
+                            </RowTemplate>
+                        </MudTable>
+                    </MudPaper>
+                </MudItem>
+
+                <MudItem xs="12" md="6">
+                    <MudPaper Class="pa-4" Outlined="true">
+                        <MudText Typo="Typo.subtitle1" Class="mb-2">Pago</MudText>
+                        <MudTable Dense="true" Hover="false" Bordered="false" Elevation="0" Items="_pagoInfo">
+                            <RowTemplate>
+                                <MudTd><b>@context.Label</b></MudTd>
+                                <MudTd>@context.Value</MudTd>
+                            </RowTemplate>
+                        </MudTable>
+                    </MudPaper>
+                </MudItem>
+
+                <MudItem xs="12" md="6">
+                    <MudPaper Class="pa-4" Outlined="true">
+                        <MudText Typo="Typo.subtitle1" Class="mb-2">Liquidación y usuario</MudText>
+                        <MudTable Dense="true" Hover="false" Bordered="false" Elevation="0" Items="_liquidacionInfo">
+                            <RowTemplate>
+                                <MudTd><b>@context.Label</b></MudTd>
+                                <MudTd>@context.Value</MudTd>
+                            </RowTemplate>
+                        </MudTable>
+                    </MudPaper>
+                </MudItem>
+            </MudGrid>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Cerrar">Cerrar</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = default!;
+    [Parameter] public VentaAgenciaDTO? Venta { get; set; }
+
+    private IEnumerable<DetalleItem> _documentoInfo => new[]
+    {
+        Item("Documento", Venta?.NU_DOCU),
+        Item("Estado doc.", Venta?.CO_ESTA_DOCU),
+        Item("Empresa", Venta?.EMPRESA),
+        Item("Cod. empresa", Venta?.COD_EMPRESA),
+        Item("Cliente", Venta?.CLIENTE),
+        Item("Cod. cliente", Venta?.COD_CLIENTE),
+        Item("Agencia", Venta?.AGENCIA),
+        Item("Cod. agencia", Venta?.COD_AGENCIA),
+        Item("Fecha", FormatDate(Venta?.FECHA)),
+        Item("Año", Venta?.ANIO?.ToString()),
+        Item("Mes", Venta?.MES?.ToString())
+    };
+
+    private IEnumerable<DetalleItem> _viajeInfo => new[]
+    {
+        Item("Origen", Venta?.ORIGEN),
+        Item("Destino", Venta?.DESTINO),
+        Item("Ruta", Venta?.CO_RUM),
+        Item("Vehículo", Venta?.CO_VEHI),
+        Item("Secuencia", Venta?.NU_SECU),
+        Item("Servicio", Venta?.TI_SERV),
+        Item("Fecha viaje", FormatDate(Venta?.FECHA_VIAJE)),
+        Item("Hora viaje", Venta?.HORA_VIAJE),
+        Item("Asiento", Venta?.ASIENTO),
+        Item("Pase", Venta?.PASE)
+    };
+
+    private IEnumerable<DetalleItem> _pagoInfo => new[]
+    {
+        Item("Método pago", Venta?.MetodoPago),
+        Item("ID transacción", Venta?.NroTransaccion),
+        Item("Hora transacción", Venta?.HoraTransaccion),
+        Item("Hora creación", Venta?.HORA_CREACION),
+        Item("Importe", FormatDecimal(Venta?.IMPORTE)),
+        Item("Importe transacción", FormatDecimal(Venta?.IMPORTE_TRANSACCION)),
+        Item("Diferencia", FormatDecimal(Venta?.DIFERENCIA)),
+        Item("Caja", Venta?.CAJA)
+    };
+
+    private IEnumerable<DetalleItem> _liquidacionInfo => new[]
+    {
+        Item("Liquidación", Venta?.NU_LIQI),
+        Item("Fecha liquidación", FormatDate(Venta?.FE_LIQI)),
+        Item("Estado liquidación", Venta?.ESTADO_LIQUIDACION),
+        Item("Usuario", Venta?.USUARIO),
+        Item("Cód. usuario", Venta?.COD_USUARIO),
+        Item("Usuario liquidación", Venta?.USUARIO_LIQUIDACION),
+        Item("Cód. usuario liquidación", Venta?.COD_USUARIO_LIQUIDACION),
+        Item("Caja liquidación", Venta?.CAJA_LIQUIDACION)
+    };
+
+    private static DetalleItem Item(string label, string? value) => new(label, string.IsNullOrWhiteSpace(value) ? "-" : value);
+    private static string FormatDate(DateTime? value) => value?.ToString("yyyy-MM-dd") ?? "-";
+    private static string FormatDecimal(decimal? value) => value?.ToString("N2") ?? "0.00";
+    private void Cerrar() => MudDialog.Close();
+
+    private sealed record DetalleItem(string Label, string Value);
+}

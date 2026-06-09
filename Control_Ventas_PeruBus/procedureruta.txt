@@ -1,0 +1,191 @@
+Procedimientp controlVentaRuta:
+
+PROCEDURE [dbo].[SP_CONTROL_VENTA_RUTA_Q01]
+                         
+AS                              
+                              
+SET NOCOUNT ON                              
+                                      
+DECLARE                              
+@VSFE_INIC DATE,                              
+@VSFE_FINA DATE                              
+                              
+DECLARE @CurrentDate DATE = GETDATE();                              
+SELECT                              
+@VSFE_INIC = DATEADD(MONTH, -1, DATEADD(DAY, 1 - DAY(@CurrentDate), @CurrentDate)),                              
+@VSFE_FINA = DATEADD(DAY, -1, DATEADD(MONTH, 1, @VSFE_INIC))                               
+                              
+;WITH RUTA1 AS (                              
+SELECT                              
+CO_EMPR,                              
+TI_DOCU,                              
+NU_DOCU                              
+FROM TCDOCU_RUTA WITH(NOLOCK)                              
+WHERE                              
+CO_EMPR IN ('01','39') AND                              
+TI_DOCU='BLT' AND                              
+CO_ESTA_DOCU = 'ACT' AND                              
+FE_VIAJ BETWEEN @VSFE_INIC AND @VSFE_FINA                              
+), RUTA2 AS (                              
+SELECT                              
+T2.CO_EMPR,                              
+T2.TI_DOCU,                              
+T2.NU_DOCU,                              
+T2.FE_VIAJ,                              
+T2.CO_RUMB,                              
+T2.NU_SECU,                              
+T2.CO_DEST_ORIG CO_ORIG,                              
+T2.CO_DEST_FINA CO_DEST,                              
+T2.IM_TOTA,                              
+ISNULL(T2.NU_LIQI,'SN LIQUIDAR') NU_LIQI,                              
+CASE LEN(T2.DE_OBSE)                              
+	WHEN 8 THEN T2.DE_OBSE                              
+	ELSE T2.DE_OBSE_0002                              
+END CO_VEHI,                              
+T2.NIU_TRAN_ID ID_TRAN,                              
+LEN(CASE LEN(T2.DE_OBSE)                              
+	WHEN 8 THEN T2.DE_OBSE                              
+	ELSE T2.DE_OBSE_0002                              
+END) DG_VEHI                              
+FROM RUTA1 T1 WITH(NOLOCK)                              
+INNER JOIN TCDOCU_RUTA T2 WITH(NOLOCK) ON                              
+T1.CO_EMPR=T2.CO_EMPR AND                              
+T1.TI_DOCU=T2.TI_DOCU AND                              
+T1.NU_DOCU=T2.NU_DOCU                              
+), CARG1 AS (                              
+SELECT DISTINCT                              
+CO_EMPR,                              
+TI_DOCU,                              
+NU_DOCU,                              
+ISNUMERIC(LEFT(NU_DOCU,1)) PR_LETR,                              
+ISNUMERIC(SUBSTRING(NU_DOCU,2,1)) SC_LETR,                              
+ISNULL(TI_LIQI,'-') TI_LIQI                              
+FROM TCDOCU_CARG WITH(NOLOCK)                              
+WHERE                              
+CO_EMPR IN ('01','39') AND                              
+TI_DOCU IN ('BOL','FAC') AND                              
+CO_ESTA_DOCU = 'ACT' AND                              
+FE_VIAJ BETWEEN @VSFE_INIC AND @VSFE_FINA                              
+), CARG2 AS (                              
+SELECT                              
+T2.CO_EMPR,                              
+T2.TI_DOCU,                              
+T2.NU_DOCU,                              
+T2.FE_VIAJ,                              
+T2.CO_RUMB,                              
+T2.NU_SECU,                              
+T2.CO_DEST_ORIG CO_ORIG,                              
+T2.CO_DEST_FINA CO_DEST,                              
+T2.IM_TOTA,                              
+ISNULL(T2.NU_LIQI,'SN LIQUIDAR') NU_LIQI,                              
+T2.DE_OBSE_0007 CO_VEHI,                              
+LEN(T2.DE_OBSE_0007) DG_VEHI                              
+FROM CARG1 T1 WITH(NOLOCK)                              
+INNER JOIN TCDOCU_CARG T2 WITH(NOLOCK) ON                              
+T1.CO_EMPR=T2.CO_EMPR AND                              
+T1.TI_DOCU=T2.TI_DOCU AND                              
+T1.NU_DOCU=T2.NU_DOCU                              
+WHERE                              
+( (T1.PR_LETR=0 AND T1.SC_LETR=0) OR (T1.PR_LETR=1 AND T1.TI_LIQI='LRU') ) AND                              
+T2.NU_SECU IS NOT NULL                              
+), TOTA1 AS (                              
+SELECT                              
+CO_EMPR,                              
+NU_DOCU,                              
+FE_VIAJ,                              
+CO_RUMB,                              
+NU_SECU,                              
+CO_ORIG,                              
+CO_DEST,                              
+IM_TOTA,                              
+NU_LIQI,                              
+ISNULL(CO_VEHI,'-') CO_VEHI,                              
+DG_VEHI,                              
+ID_TRAN,                              
+ISNULL(CAST(T3.TRANSACTIONID AS VARCHAR(50)), '') ID_TRANSACCION_STR,                              
+ISNULL(UPPER(T3.WALLET),'EFECTIVO') METODO_PAGO,                              
+CAST(REPLACE(ISNULL(T3.transactionAmount, '0'), ',', '.') AS DECIMAL(10,2)) IMPORTE_TRNSACCION                              
+FROM RUTA2 T2 WITH(NOLOCK)                              
+LEFT JOIN [10.10.10.49].NIUBIZ_BK.DBO.TMCALL_NIU T3 WITH(NOLOCK) ON                              
+T2.CO_EMPR = T3.CompanyCode AND                              
+T2.NU_DOCU = T3.DocumentTravel AND                              
+T2.ID_TRAN = T3.transactionId                              
+UNION ALL                              
+SELECT                              
+CO_EMPR,                              
+NU_DOCU,                              
+FE_VIAJ,                              
+CO_RUMB,                              
+NU_SECU,                              
+CO_ORIG,                              
+CO_DEST,                              
+IM_TOTA,                              
+NU_LIQI,                              
+ISNULL(CO_VEHI,'-') CO_VEHI,                              
+DG_VEHI,                              
+0 ID_TRAN, -- Placeholder since CARG doesn't use ID_TRAN in original                              
+ISNULL(CAST(T3.TRANSACTIONID AS VARCHAR(50)), '') ID_TRANSACCION_STR,                              
+ISNULL(UPPER(T3.WALLET),'EFECTIVO') METODO_PAGO,                              
+CAST(REPLACE(ISNULL(T3.transactionAmount, '0'), ',', '.') AS DECIMAL(10,2)) IMPORTE_TRNSACCION                              
+FROM CARG2 T2 WITH(NOLOCK)                              
+LEFT JOIN [10.10.10.49].NIUBIZ_BK.DBO.TMCALL_NIU T3 WITH(NOLOCK) ON                              
+T2.CO_EMPR = T3.CompanyCode AND                              
+T2.NU_DOCU = T3.DocumentTravel                              
+), ITIN AS (                              
+SELECT                              
+T1.CO_RUMB,                              
+T1.FE_PROG FE_VIAJ,                              
+T1.NU_SECU,                              
+T1.CO_VEHI                              
+FROM TDPROG_ITIN T1 WITH(NOLOCK)                              
+INNER JOIN (                              
+ SELECT DISTINCT                              
+  FE_VIAJ,                              
+  CO_RUMB,                              
+  NU_SECU                              
+ FROM TOTA1                              
+ WHERE DG_VEHI != 4                              
+) T2 ON                              
+T1.CO_RUMB = T2.CO_RUMB AND                              
+T1.FE_PROG = T2.FE_VIAJ AND                              
+T1.NU_SECU = T2.NU_SECU                              
+), TOTA2 AS (                              
+SELECT                              
+T1.CO_EMPR,                              
+T1.NU_DOCU DOCUMENTO,                              
+T1.CO_ORIG ORIGEN,                              
+T1.CO_DEST DESTINO,                              
+T1.NU_LIQI LIQUIDACION,                              
+T1.ID_TRANSACCION_STR [ID TRANSACCION],                              
+ISNULL(T2.CO_VEHI, T1.CO_VEHI) BUS,                              
+T1.METODO_PAGO [METODO PAGO],                              
+T1.IM_TOTA IMPORTE,                              
+T1.IMPORTE_TRNSACCION [IMPORTE TRNSACCION]                              
+FROM TOTA1 T1 WITH(NOLOCK)                              
+LEFT JOIN ITIN T2 WITH(NOLOCK) ON                              
+T1.CO_RUMB = T2.CO_RUMB AND                              
+T1.FE_VIAJ = T2.FE_VIAJ AND                              
+T1.NU_SECU = T2.NU_SECU AND                              
+T1.DG_VEHI != 4                              
+)                              
+SELECT                              
+DOCUMENTO,                              
+ORIGEN,                              
+DESTINO,                              
+LIQUIDACION,                              
+[ID TRANSACCION],                              
+BUS,                              
+[METODO PAGO],                              
+SUM(IMPORTE) [SUMA IMPORTE],                              
+SUM([IMPORTE TRNSACCION]) [SUMA IMPORTE TRNSACCION],                              
+SUM(IMPORTE - [IMPORTE TRNSACCION]) [SUMA DIFERENCIA]                              
+FROM TOTA2                              
+GROUP BY                              
+DOCUMENTO,                              
+ORIGEN,                              
+DESTINO,                              
+LIQUIDACION,                              
+[ID TRANSACCION],                              
+BUS,                              
+[METODO PAGO]                              
+ORDER BY DOCUMENTO

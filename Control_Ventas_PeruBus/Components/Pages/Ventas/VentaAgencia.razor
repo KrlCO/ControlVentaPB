@@ -1,0 +1,334 @@
+@page "/rpt/4t7vpx2c"
+@rendermode InteractiveServer
+@using Control_Ventas_PeruBus.Models.DTOs
+@using Control_Ventas_PeruBus.Services.Interfaces
+@using System.Text.RegularExpressions
+@using MudBlazor
+@inject IVentaAgenciaService VentaAgenciaService
+@inject Microsoft.Extensions.Logging.ILogger<VentaAgencia> Logger
+@inject ISnackbar Snackbar
+@inject IJSRuntime JS
+@inject IDialogService DialogService
+
+<PageTitle>Control Venta Agencia</PageTitle>
+
+<MudPaper Class="p-6">
+    <MudText Typo="Typo.h5">Control Venta Agencia</MudText>
+
+    <MudGrid Spacing="2" Class="mt-2">
+        <MudItem xs="12" sm="6" md="2">
+            <MudDatePicker Label="Fecha inicio"
+                           Date="@_feDocuIni"
+                           DateChanged="OnFechaInicioChanged"
+                           Variant="Variant.Outlined"
+                           Margin="Margin.Dense"
+                           PickerVariant="PickerVariant.Dialog" />
+        </MudItem>
+
+        <MudItem xs="12" sm="6" md="2">
+            <MudDatePicker Label="Fecha fin"
+                           Date="@_feDocuFin"
+                           DateChanged="OnFechaFinChanged"
+                           Variant="Variant.Outlined"
+                           Margin="Margin.Dense"
+                           PickerVariant="PickerVariant.Dialog" />
+        </MudItem>
+
+        <MudItem xs="12" sm="6" md="2">
+            <MudSelect T="string" Label="Empresa" Dense="true" Margin="Margin.Dense" @bind-Value="_coEmpr">
+                <MudSelectItem Value="@("01")">PERU BUS</MudSelectItem>
+                <MudSelectItem Value="@("39")">EXPRESO SUR BUS</MudSelectItem>
+            </MudSelect>
+        </MudItem>
+
+        <MudItem xs="12" sm="6" md="2">
+            <MudTextField @bind-Value="AgencyInput"
+                          Label="Agencia"
+                          Immediate="true"
+                          TextUpdateSuppression="false"
+                          Variant="Variant.Outlined"
+                          Margin="Margin.Dense"
+                          UserAttributes="@(new Dictionary<string, object> { { "maxlength", "3" }, { "inputmode", "numeric" } })" />
+        </MudItem>
+
+        <MudItem xs="12" sm="6" md="2">
+            <MudTextField @bind-Value="UserInput"
+                          Label="Usuario"
+                          Immediate="true"
+                          TextUpdateSuppression="false"
+                          Variant="Variant.Outlined"
+                          Margin="Margin.Dense"
+                          UserAttributes="@(new Dictionary<string, object> { { "maxlength", "8" }, { "oninput", "this.value = this.value.toUpperCase()" } })" />
+        </MudItem>
+
+        <MudItem xs="12" sm="6" md="2">
+            <MudSelect T="string" Label="Método de pago" Dense="true" Margin="Margin.Dense" @bind-Value="_metodoPago">
+                <MudSelectItem Value="@("TODOS")">Todos</MudSelectItem>
+                <MudSelectItem Value="@("EFECTIVO")">Efectivo</MudSelectItem>
+                <MudSelectItem Value="@("NO_EFECTIVO")">No efectivo</MudSelectItem>
+            </MudSelect>
+        </MudItem>
+
+        <MudItem xs="12" sm="6" md="2">
+            <MudTextField @bind-Value="SerieInput"
+                          Label="Id Serie"
+                          Immediate="true"
+                          TextUpdateSuppression="false"
+                          Variant="Variant.Outlined"
+                          Margin="Margin.Dense"
+                          UserAttributes="@(new Dictionary<string, object> { { "maxlength", "4" } })" />
+        </MudItem>
+    </MudGrid>
+
+    <MudStack Row="true" Spacing="2" Class="mt-5">
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Buscar">Buscar</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Secondary" OnClick="BuscarDia">Liquidaciones día</MudButton>
+        <MudButton Variant="Variant.Outlined" Color="Color.Info" Disabled="@(!_lista?.Any() ?? true)" OnClick="ExportarXlsx">Exportar excel</MudButton>
+    </MudStack>
+
+    @if (_cargando)
+    {
+        <MudProgressCircular Class="mt-4" Indeterminate="true" Color="Color.Primary" />
+    }
+    else if (_lista != null && _lista.Any())
+    {
+        <MudAlert Severity="Severity.Info" Class="mt-4">
+            Totales: Importe @_totalImporte.ToString("N2") | Importe Transacción @_totalTransaccion.ToString("N2") | Diferencia @_totalDiferencia.ToString("N2")
+        </MudAlert>
+
+        <div style="overflow-x:auto;">
+            <MudTable Items="_lista" Dense="true" Hover="true" Striped="true" Class="mt-4" RowsPerPage="100">
+                <HeaderContent>
+                    <MudTh>Documento</MudTh>
+                    <MudTh>Origen</MudTh>
+                    <MudTh>Destino</MudTh>
+                    <MudTh>Liquidación</MudTh>
+                    <MudTh>F. Liqui.</MudTh>
+                    <MudTh>Hora Trans.</MudTh>
+                    <MudTh>Hora Creación</MudTh>
+                    <MudTh>Método Pago</MudTh>
+                    <MudTh>ID Transacción</MudTh>
+                    <MudTh>Importe</MudTh>
+                    <MudTh>Importe Trans.</MudTh>
+                    <MudTh>Diferencia</MudTh>
+                    <MudTh>F. Viaje</MudTh>
+                    <MudTh>Caja</MudTh>
+                    <MudTh>Cód. Usuario</MudTh>
+                </HeaderContent>
+
+                <RowTemplate>
+                    <MudTd>
+                        <MudLink Href="javascript:void(0)" OnClick="@(() => AbrirDetalle(context))">@context.NU_DOCU</MudLink>
+                    </MudTd>
+                    <MudTd>@context.ORIGEN</MudTd>
+                    <MudTd>@context.DESTINO</MudTd>
+                    <MudTd>@context.NU_LIQI</MudTd>
+                    <MudTd>@context.FE_LIQI?.ToString("yyyy-MM-dd")</MudTd>
+                    <MudTd>@context.HoraTransaccion</MudTd>
+                    <MudTd>@context.HORA_CREACION</MudTd>
+                    <MudTd>@context.MetodoPago</MudTd>
+                    <MudTd>@context.NroTransaccion</MudTd>
+                    <MudTd>@context.IMPORTE.ToString("N2")</MudTd>
+                    <MudTd>@context.IMPORTE_TRANSACCION.ToString("N2")</MudTd>
+                    <MudTd>@context.DIFERENCIA.ToString("N2")</MudTd>
+                    <MudTd>@context.FECHA_VIAJE?.ToString("yyyy-MM-dd")</MudTd>
+                    <MudTd>@context.CAJA</MudTd>
+                    <MudTd>@context.COD_USUARIO</MudTd>
+                </RowTemplate>
+
+                <PagerContent>
+                    <MudTablePager PageSizeOptions="new int[] { 20, 50, 100, 200 }" />
+                </PagerContent>
+            </MudTable>
+        </div>
+    }
+    else if (_lista != null)
+    {
+        <MudText Class="mt-4" Typo="Typo.subtitle2">Sin resultados</MudText>
+    }
+</MudPaper>
+
+@code {
+    private DateTime? _feDocuIni = DateTime.Today;
+    private DateTime? _feDocuFin = DateTime.Today;
+    private string _coEmpr = "01";
+    private string? _coAgen;
+    private string? _coUsua;
+    private string _metodoPago = "TODOS";
+    private string? _idSeri;
+    private bool _cargando;
+    private IEnumerable<VentaAgenciaDTO>? _lista;
+    private decimal _totalImporte;
+    private decimal _totalTransaccion;
+    private decimal _totalDiferencia;
+    private static readonly Regex AgencyRegex = new(@"[^0-9]", RegexOptions.Compiled);
+    private static readonly Regex UserRegex = new(@"[^A-Za-z]", RegexOptions.Compiled);
+    private static readonly Regex SerieRegex = new(@"[^A-Za-z0-9]", RegexOptions.Compiled);
+
+    private void OnFechaInicioChanged(DateTime? value) => _feDocuIni = value;
+    private void OnFechaFinChanged(DateTime? value) => _feDocuFin = value;
+
+    private string? AgencyInput
+    {
+        get => _coAgen;
+        set => _coAgen = SanitizeAgency(value);
+    }
+
+    private string? UserInput
+    {
+        get => _coUsua;
+        set => _coUsua = SanitizeUser(value);
+    }
+
+    private string? SerieInput
+    {
+        get => _idSeri;
+        set => _idSeri = SanitizeSerie(value);
+    }
+
+    private async Task Buscar()
+    {
+        _coAgen = SanitizeAgency(_coAgen);
+        _coUsua = SanitizeUser(_coUsua);
+        _idSeri = SanitizeSerie(_idSeri);
+
+        if (!_feDocuIni.HasValue || !_feDocuFin.HasValue)
+        {
+            Snackbar.Add("Seleccione el rango de fechas", Severity.Warning);
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_coAgen))
+        {
+            Snackbar.Add("Ingrese una agencia", Severity.Warning);
+            return;
+        }
+
+        if (_coAgen.Length != 3)
+        {
+            Snackbar.Add("La agencia debe tener exactamente 3 dígitos numéricos", Severity.Warning);
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(_idSeri) && _idSeri.Length != 4)
+        {
+            Snackbar.Add("Id Serie debe tener exactamente 4 caracteres alfanuméricos", Severity.Warning);
+            return;
+        }
+
+        _cargando = true;
+        Snackbar.Add("Buscando ventas de agencia...", Severity.Info);
+        StateHasChanged();
+
+        try
+        {
+            _lista = await VentaAgenciaService.ObtenerVentasAsync(
+                _feDocuIni.Value,
+                _feDocuFin.Value,
+                _coUsua,
+                _idSeri,
+                _coAgen.Trim().ToUpperInvariant(),
+                _metodoPago,
+                _coEmpr);
+
+            _totalImporte = _lista?.Sum(x => x.IMPORTE) ?? 0m;
+            _totalTransaccion = _lista?.Sum(x => x.IMPORTE_TRANSACCION) ?? 0m;
+            _totalDiferencia = _lista?.Sum(x => x.DIFERENCIA) ?? 0m;
+            Logger.LogInformation("[UI Agencia] Datos recibidos: {Count} filas", _lista?.Count() ?? 0);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "[UI Agencia] Error al consultar ventas de agencia");
+            Snackbar.Add($"Error al consultar ventas de agencia: {ex.GetBaseException().Message}", Severity.Error);
+            _lista = Enumerable.Empty<VentaAgenciaDTO>();
+        }
+        finally
+        {
+            _cargando = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task BuscarDia()
+    {
+        _feDocuIni = DateTime.Today;
+        _feDocuFin = DateTime.Today;
+        await Buscar();
+    }
+
+    private void ExportarXlsx()
+    {
+        _coAgen = SanitizeAgency(_coAgen);
+        _coUsua = SanitizeUser(_coUsua);
+        _idSeri = SanitizeSerie(_idSeri);
+
+        if (!_feDocuIni.HasValue || !_feDocuFin.HasValue || string.IsNullOrWhiteSpace(_coAgen))
+            return;
+
+        if (_coAgen.Length != 3)
+            return;
+
+        if (!string.IsNullOrWhiteSpace(_idSeri) && _idSeri.Length != 4)
+            return;
+
+        var url = new System.Text.StringBuilder("api/ventaagencia/export?");
+        url.Append($"feDocuIni={_feDocuIni:yyyy-MM-dd}&");
+        url.Append($"feDocuFin={_feDocuFin:yyyy-MM-dd}&");
+        url.Append($"coAgen={Uri.EscapeDataString(_coAgen.Trim().ToUpperInvariant())}&");
+        url.Append($"coEmpr={Uri.EscapeDataString(_coEmpr)}&");
+        url.Append($"metodoPago={Uri.EscapeDataString(_metodoPago)}&");
+        if (!string.IsNullOrWhiteSpace(_coUsua))
+            url.Append($"coUsua={Uri.EscapeDataString(_coUsua.Trim().ToUpperInvariant())}&");
+        if (!string.IsNullOrWhiteSpace(_idSeri))
+            url.Append($"idSeri={Uri.EscapeDataString(_idSeri.Trim().ToUpperInvariant())}&");
+
+        JS.InvokeVoidAsync("open", url.ToString().TrimEnd('&'), "_blank");
+    }
+
+    private async Task AbrirDetalle(VentaAgenciaDTO venta)
+    {
+        var parameters = new DialogParameters<VentaAgenciaDetalleDialog>
+        {
+            { x => x.Venta, venta }
+        };
+
+        var options = new DialogOptions
+        {
+            CloseButton = true,
+            MaxWidth = MaxWidth.Large,
+            FullWidth = true
+        };
+
+        await DialogService.ShowAsync<VentaAgenciaDetalleDialog>($"Detalle {venta.NU_DOCU}", parameters, options);
+    }
+
+    private static string? SanitizeAgency(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        var cleaned = AgencyRegex.Replace(value, string.Empty);
+        cleaned = cleaned.Length > 3 ? cleaned[..3] : cleaned;
+        return string.IsNullOrWhiteSpace(cleaned) ? null : cleaned;
+    }
+
+    private static string? SanitizeUser(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        var cleaned = UserRegex.Replace(value, string.Empty).ToUpperInvariant();
+        cleaned = cleaned.Length > 8 ? cleaned[..8] : cleaned;
+        return string.IsNullOrWhiteSpace(cleaned) ? null : cleaned;
+    }
+
+    private static string? SanitizeSerie(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        var cleaned = SerieRegex.Replace(value, string.Empty).ToUpperInvariant();
+        cleaned = cleaned.Length > 4 ? cleaned[..4] : cleaned;
+        return string.IsNullOrWhiteSpace(cleaned) ? null : cleaned;
+    }
+}
