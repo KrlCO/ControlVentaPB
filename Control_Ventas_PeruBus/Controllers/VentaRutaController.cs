@@ -48,7 +48,16 @@ namespace Control_Ventas_PeruBus.Controllers
                 if (!string.IsNullOrWhiteSpace(empresa))
                     query = query.Where(x => (x.EMPRESA ?? string.Empty).Trim() == empresa.Trim());
                 if (!string.IsNullOrWhiteSpace(liquidacion))
-                    query = query.Where(x => (x.LIQUIDACION ?? string.Empty).Trim() == liquidacion.Trim());
+                {
+                    var parts = SplitDigits(liquidacion);
+                    var corrNz = parts.corr.TrimStart('0');
+                    query = query.Where(x =>
+                    {
+                        var p = SplitDigits(x.LIQUIDACION ?? string.Empty);
+                        var corrDbNz = p.corr.TrimStart('0');
+                        return p.serie == parts.serie && (p.corr == parts.corr || corrDbNz == corrNz);
+                    });
+                }
                 var metodoPagoNormalizado = NormalizarMetodoPago(metodoPago);
                 if (string.Equals(metodoPagoNormalizado, "SOLO EFECTIVO", StringComparison.OrdinalIgnoreCase))
                     query = query.Where(x => !EsMetodoNoEfectivo(x.METODO_PAGO));
@@ -56,15 +65,6 @@ namespace Control_Ventas_PeruBus.Controllers
                     query = query.Where(x => EsMetodoNoEfectivo(x.METODO_PAGO));
                 else if (!string.Equals(metodoPagoNormalizado, "TODOS", StringComparison.OrdinalIgnoreCase))
                     query = query.Where(x => string.Equals((x.METODO_PAGO ?? string.Empty).Trim(), metodoPagoNormalizado, StringComparison.OrdinalIgnoreCase));
-                if (fechaLiquidacion.HasValue)
-                {
-                    var d = fechaLiquidacion.Value.Date;
-                    query = query.Where(x => (x.FECHA_LIQUIDACION?.Date ?? x.FECHA_PROCESO?.Date ?? DateTime.MinValue.Date) == d);
-                }
-                else
-                {
-                    query = query.Where(x => RutaOperacionWindow.Contains(x.FECHA_LIQUIDACION ?? x.FECHA_PROCESO ?? x.HORA_TRANSACCION));
-                }
                 list = query.OrderByDescending(x => x.FECHA_LIQUIDACION ?? DateTime.MinValue).ToList();
             }
             else
@@ -98,8 +98,7 @@ namespace Control_Ventas_PeruBus.Controllers
             ws.Cell(4, 1).Value = "Empresa";
             ws.Cell(4, 2).Value = empresaNombre;
             ws.Cell(5, 1).Value = "Fecha liquidación";
-            ws.Cell(5, 2).Value = fechaLiquidacion?.ToString("yyyy-MM-dd")
-                ?? (diario ? $"{windowStart:yyyy-MM-dd HH:mm} - {windowEnd:yyyy-MM-dd HH:mm}" : "Todas");
+            ws.Cell(5, 2).Value = ObtenerDescripcionRango(diario, inicio, fin, fechaLiquidacion, windowStart, windowEnd);
 
             ws.Range(2, 1, 5, 1).Style.Font.Bold = true;
             ws.Range(2, 1, 5, 1).Style.Fill.BackgroundColor = XLColor.FromHtml("#D9EAF7");
@@ -207,6 +206,28 @@ namespace Control_Ventas_PeruBus.Controllers
         {
             var normalized = (metodoPago ?? string.Empty).Trim().ToUpperInvariant();
             return !string.IsNullOrWhiteSpace(normalized) && !EsMetodoEfectivoRegistrado(normalized);
+        }
+
+        private static (string serie, string corr) SplitDigits(string s)
+        {
+            var d = System.Text.RegularExpressions.Regex.Replace(s ?? string.Empty, "[^0-9]", string.Empty);
+            var serie = d.Length >= 4 ? d.Substring(0, 4) : d;
+            var corr = d.Length > 4 ? d.Substring(4) : string.Empty;
+            return (serie, corr);
+        }
+
+        private static string ObtenerDescripcionRango(bool diario, DateTime? inicio, DateTime? fin, DateTime? fechaLiquidacion, DateTime windowStart, DateTime windowEnd)
+        {
+            if (diario)
+                return "Consulta diaria directa";
+
+            if (fechaLiquidacion.HasValue)
+                return fechaLiquidacion.Value.ToString("yyyy-MM-dd");
+
+            if (inicio.HasValue || fin.HasValue)
+                return $"{inicio:yyyy-MM-dd HH:mm} - {fin:yyyy-MM-dd HH:mm}";
+
+            return $"{windowStart:yyyy-MM-dd HH:mm} - {windowEnd:yyyy-MM-dd HH:mm}";
         }
     }
 }

@@ -18,6 +18,9 @@ namespace Control_Ventas_PeruBus.Data.Repository
 {
     public class VentaRutaRepository : IVentaRutaRepository
     {
+        private const string HotSourceName = "dbo.LiquidacionesRuta_Hot";
+        private const string ColdSourceName = "dbo.LiquidacionesRuta_Mensual";
+        private const int HotRetentionDays = 7;
         private readonly string _connectionString;
         private readonly string? _ofiventConnectionString;
         private readonly Microsoft.Extensions.Logging.ILogger<VentaRutaRepository> _logger;
@@ -69,6 +72,7 @@ namespace Control_Ventas_PeruBus.Data.Repository
         {
             var sql = @"
                 SELECT
+                    0 AS IdCache,
                     DOCUMENTO,
                     ORIGEN,
                     DESTINO,
@@ -81,7 +85,7 @@ namespace Control_Ventas_PeruBus.Data.Repository
                     [SUMA IMPORTE] AS SUMA_IMPORTE,
                     [SUMA IMPORTE TRNSACCION] AS SUMA_IMPORTE_TRNSACCION,
                     [SUMA DIFERENCIA] AS SUMA_DIFERENCIA
-                FROM dbo.Cache_LiquidacionesRuta_Mensual
+                FROM " + HotSourceName + @"
                 ORDER BY FECHA_LIQUIDACION DESC;";
 
             using var conn = new SqlConnection(_connectionString);
@@ -217,9 +221,10 @@ namespace Control_Ventas_PeruBus.Data.Repository
 
         public async Task<IEnumerable<VentaRutaDTO>> GetSaleRouteAsync(string? usuario, string? empresa, string? estado, DateTime? fechainicio, DateTime? fechafin, string? liquidacion, string? metodoPago, DateTime? fechaLiquidacion)
         {
+            var sourceName = ResolveSourceName(fechainicio, fechafin, fechaLiquidacion);
             var sql = @"
                 SELECT
-                    IdCache,
+                    0 AS IdCache,
                     EMPRESA,
                     DOCUMENTO,
                     ORIGEN,
@@ -235,7 +240,7 @@ namespace Control_Ventas_PeruBus.Data.Repository
                     [SUMA IMPORTE] AS SUMA_IMPORTE,
                     [SUMA IMPORTE TRNSACCION] AS SUMA_IMPORTE_TRNSACCION,
                     [SUMA DIFERENCIA] AS SUMA_DIFERENCIA
-                FROM dbo.Cache_LiquidacionesRuta_Mensual";
+                FROM " + sourceName;
 
             var conditions = new List<string>();
             var param = new DynamicParameters();
@@ -411,7 +416,28 @@ namespace Control_Ventas_PeruBus.Data.Repository
                 };
                 list.Add(dto);
             }
+            _logger.LogInformation("[Repo] Fuente={Fuente} usuario='{Usuario}' inicio='{Inicio}' fin='{Fin}' fecha='{Fecha}' filas={Count}",
+                sourceName,
+                usuario ?? "<null>",
+                fechainicio?.ToString("yyyy-MM-dd") ?? "<null>",
+                fechafin?.ToString("yyyy-MM-dd") ?? "<null>",
+                fechaLiquidacion?.ToString("yyyy-MM-dd") ?? "<null>",
+                list.Count);
             return list;
+        }
+
+        private static string ResolveSourceName(DateTime? fechaInicio, DateTime? fechaFin, DateTime? fechaLiquidacion)
+        {
+            var hotMinDate = DateTime.Today.AddDays(-HotRetentionDays).Date;
+            if (fechaLiquidacion.HasValue)
+                return fechaLiquidacion.Value.Date >= hotMinDate ? HotSourceName : ColdSourceName;
+
+            if (!fechaInicio.HasValue && !fechaFin.HasValue)
+                return HotSourceName;
+
+            var start = (fechaInicio ?? fechaFin ?? DateTime.Today).Date;
+            var end = (fechaFin ?? fechaInicio ?? DateTime.Today).Date;
+            return start >= hotMinDate && end >= hotMinDate ? HotSourceName : ColdSourceName;
         }
 
     }

@@ -12,6 +12,7 @@
 @inject IVentaRutaService VentaRutaService
 @inject Microsoft.Extensions.Logging.ILogger<VentaRuta> Logger
 @inject ISnackbar Snackbar
+@inject IDialogService DialogService
 @inject NavigationManager Nav
 @inject IJSRuntime JS
 
@@ -126,7 +127,7 @@
     </MudGrid>
                              
     <MudStack Row="true" Spacing="2" Class="mt-5">
-        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Buscar">Liquidaciones 30 dias</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="BuscarMes">Liquidaciones Mes</MudButton>
         <MudButton Variant="Variant.Filled" Color="Color.Success" OnClick="BuscarDiario">Liquidaciones del día</MudButton>
         <MudButton Variant="Variant.Outlined" Color="Color.Info" Disabled="@(!_lista?.Any() ?? true)" OnClick="ExportarXlsx">Exportar excel</MudButton>
     </MudStack>
@@ -215,6 +216,13 @@
 </MudPaper>
 
 @code {
+    private enum RutaModoConsulta
+    {
+        Semana,
+        Mes,
+        Diario
+    }
+
     private string? _usuario;
     private string? _liquidacion;
     private string? _metodoPago;
@@ -229,6 +237,7 @@
     private decimal _totalImporte;
     private decimal _totalTransaccion;
     private decimal _totalDiferencia;
+    private RutaModoConsulta _modoConsulta = RutaModoConsulta.Semana;
     private readonly Dictionary<string, object> _usuarioAttrs = new()
     {
         {"id", "usuarioInput"},
@@ -373,36 +382,81 @@
         StateHasChanged();
     }
 
-    private async Task Buscar()
+    private async Task BuscarSemana()
     {
-        Logger.LogInformation("[UI] Click Buscar. Usuario='{Usuario}'", _usuario ?? "<null>");
+        Logger.LogInformation("[UI] Carga semanal. Usuario='{Usuario}'", _usuario ?? "<null>");
         if (string.IsNullOrWhiteSpace(_usuario))
         {
-            Logger.LogWarning("[UI] Buscar cancelado: usuario vacío");
+            Logger.LogWarning("[UI] Carga semanal cancelada: usuario vacío");
             Snackbar.Add("Ingrese un usuario", Severity.Warning);
             return;
         }
         if (_cargando)
         {
-            Logger.LogInformation("[UI] Buscar ignorado: carga en curso");
+            Logger.LogInformation("[UI] Carga semanal ignorada: carga en curso");
             Snackbar.Add("Carga en curso...", Severity.Info);
             return;
         }
 
+        if (_fechaLiquidacion.HasValue && !EstaFechaDentroDeSemanaOperativa(_fechaLiquidacion.Value))
+        {
+            await JS.InvokeVoidAsync("alert", "La fecha ingresada no pertenece al rango de los ultimos 7 dias. Busque dentro de las liquidaciones del mes.");
+            return;
+        }
+
+        _modoConsulta = RutaModoConsulta.Semana;
         _usarCacheDiaria = false;
         _cargando = true;
-        Logger.LogInformation("[UI] Buscando... usuario='{Usuario}'", _usuario);
-        Snackbar.Add("Buscando...", Severity.Info);
+        Logger.LogInformation("[UI] Buscando semana... usuario='{Usuario}'", _usuario);
+        Snackbar.Add("Buscando ultima semana...", Severity.Info);
         StateHasChanged();
         var metodoArg = string.IsNullOrWhiteSpace(_metodoPago) ? null : _metodoPago!.Trim().ToUpperInvariant();
         var empresaArg = _empresa?.Trim();
-        _lista = await VentaRutaService.ObtenerVentasAsync(_usuario?.Trim(), empresaArg, null, null, null, _liquidacion?.Trim(), metodoArg, _fechaLiquidacion);
+        var inicio = ObtenerInicioSemanaOperativa();
+        var fin = ObtenerFinSemanaOperativa();
+        _lista = await VentaRutaService.ObtenerVentasAsync(_usuario?.Trim(), empresaArg, null, inicio, fin, _liquidacion?.Trim(), metodoArg, _fechaLiquidacion);
         _lista = _lista?.OrderByDescending(x => x.FECHA_LIQUIDACION ?? DateTime.MinValue).ToList();
         _totalImporte = _lista?.Sum(x => x.SUMA_IMPORTE) ?? 0m;
         _totalTransaccion = _lista?.Sum(x => x.SUMA_IMPORTE_TRNSACCION) ?? 0m;
         _totalDiferencia = _lista?.Sum(x => x.SUMA_DIFERENCIA) ?? 0m;
         _cargando = false;
         Logger.LogInformation("[UI] Datos recibidos: {Count} filas", _lista?.Count() ?? -1);
+        if (_lista is null || !_lista.Any())
+        {
+            Snackbar.Add("Sin resultados", Severity.Info);
+        }
+        StateHasChanged();
+    }
+
+    private async Task BuscarMes()
+    {
+        Logger.LogInformation("[UI] Click Mes. Usuario='{Usuario}'", _usuario ?? "<null>");
+        if (string.IsNullOrWhiteSpace(_usuario))
+        {
+            Snackbar.Add("Ingrese un usuario", Severity.Warning);
+            return;
+        }
+        if (_cargando)
+        {
+            Snackbar.Add("Carga en curso...", Severity.Info);
+            return;
+        }
+
+        _modoConsulta = RutaModoConsulta.Mes;
+        _usarCacheDiaria = false;
+        _cargando = true;
+        Snackbar.Add("Buscando mes actual y mes anterior...", Severity.Info);
+        StateHasChanged();
+        var metodoArg = string.IsNullOrWhiteSpace(_metodoPago) ? null : _metodoPago!.Trim().ToUpperInvariant();
+        var empresaArg = _empresa?.Trim();
+        var inicio = ObtenerInicioVentanaMensual();
+        var fin = ObtenerFinVentanaMensual();
+        _lista = await VentaRutaService.ObtenerVentasAsync(_usuario?.Trim(), empresaArg, null, inicio, fin, _liquidacion?.Trim(), metodoArg, _fechaLiquidacion);
+        _lista = _lista?.OrderByDescending(x => x.FECHA_LIQUIDACION ?? DateTime.MinValue).ToList();
+        _totalImporte = _lista?.Sum(x => x.SUMA_IMPORTE) ?? 0m;
+        _totalTransaccion = _lista?.Sum(x => x.SUMA_IMPORTE_TRNSACCION) ?? 0m;
+        _totalDiferencia = _lista?.Sum(x => x.SUMA_DIFERENCIA) ?? 0m;
+        _cargando = false;
         if (_lista is null || !_lista.Any())
         {
             Snackbar.Add("Sin resultados", Severity.Info);
@@ -423,6 +477,9 @@
             Snackbar.Add("Carga en curso...", Severity.Info);
             return;
         }
+        _modoConsulta = RutaModoConsulta.Diario;
+        if (_fechaLiquidacion.HasValue)
+            Snackbar.Add("En liquidaciones del dia no se aplica el filtro Fecha de liquidacion.", Severity.Info);
         _cargando = true;
         Snackbar.Add("Buscando diario...", Severity.Info);
         StateHasChanged();
@@ -482,8 +539,8 @@
                 }
                 else
                 {
-                    Logger.LogInformation("[UI] Debounce ejecuta Buscar");
-                    await InvokeAsync(Buscar);
+                    Logger.LogInformation("[UI] Debounce ejecuta modo {Modo}", _modoConsulta);
+                    await InvokeAsync(BuscarSegunModoActual);
                 }
             }
             catch (TaskCanceledException) { }
@@ -508,8 +565,17 @@
         if (!string.IsNullOrWhiteSpace(_liquidacion)) url.Append($"liquidacion={Uri.EscapeDataString(_liquidacion.Trim())}&");
         if (!string.IsNullOrWhiteSpace(_metodoPago)) url.Append($"metodoPago={Uri.EscapeDataString(_metodoPago.Trim().ToUpperInvariant())}&");
         if (!string.IsNullOrWhiteSpace(_empresa)) url.Append($"empresa={Uri.EscapeDataString(_empresa.Trim())}&");
-        if (_fechaLiquidacion.HasValue) url.Append($"fechaLiquidacion={_fechaLiquidacion:yyyy-MM-dd}&");
-        if (_usarCacheDiaria) url.Append("diario=true&");
+        if (_usarCacheDiaria)
+        {
+            url.Append("diario=true&");
+        }
+        else
+        {
+            var rango = ObtenerRangoActual();
+            if (rango.inicio.HasValue) url.Append($"inicio={Uri.EscapeDataString(rango.inicio.Value.ToString("yyyy-MM-ddTHH:mm:ss"))}&");
+            if (rango.fin.HasValue) url.Append($"fin={Uri.EscapeDataString(rango.fin.Value.ToString("yyyy-MM-ddTHH:mm:ss"))}&");
+            if (_fechaLiquidacion.HasValue) url.Append($"fechaLiquidacion={_fechaLiquidacion:yyyy-MM-dd}&");
+        }
         var finalUrl = url.ToString().TrimEnd('&');
         JS.InvokeVoidAsync("open", finalUrl, "_blank");
     }
@@ -528,11 +594,19 @@
         }
 
         IEnumerable<VentaRutaDTO> query = baseList;
-        query = query.Where(x => RutaOperacionWindow.Contains(x.FECHA_LIQUIDACION ?? x.FECHA_PROCESO ?? x.HORA_TRANSACCION));
         if (!string.IsNullOrWhiteSpace(_empresa))
             query = query.Where(x => (x.EMPRESA ?? string.Empty).Trim() == _empresa!.Trim());
         if (!string.IsNullOrWhiteSpace(_liquidacion))
-            query = query.Where(x => (x.LIQUIDACION ?? string.Empty).Trim() == _liquidacion!.Trim());
+        {
+            var parts = SplitDigits(_liquidacion!);
+            var corrNz = parts.corr.TrimStart('0');
+            query = query.Where(x =>
+            {
+                var p = SplitDigits(x.LIQUIDACION ?? string.Empty);
+                var corrDbNz = p.corr.TrimStart('0');
+                return p.serie == parts.serie && (p.corr == parts.corr || corrDbNz == corrNz);
+            });
+        }
         var metodoPagoNormalizado = NormalizarMetodoPago(_metodoPago);
         if (string.Equals(metodoPagoNormalizado, "SOLO EFECTIVO", StringComparison.OrdinalIgnoreCase))
             query = query.Where(x => !EsMetodoNoEfectivo(x.METODO_PAGO));
@@ -540,14 +614,22 @@
             query = query.Where(x => EsMetodoNoEfectivo(x.METODO_PAGO));
         else if (!string.Equals(metodoPagoNormalizado, "TODOS", StringComparison.OrdinalIgnoreCase))
             query = query.Where(x => string.Equals((x.METODO_PAGO ?? string.Empty).Trim(), metodoPagoNormalizado, StringComparison.OrdinalIgnoreCase));
-        if (_fechaLiquidacion.HasValue)
-            query = query.Where(x => (x.FECHA_LIQUIDACION?.Date ?? x.FECHA_PROCESO?.Date ?? DateTime.MinValue.Date) == _fechaLiquidacion.Value.Date);
 
         _lista = query.OrderByDescending(x => x.FECHA_LIQUIDACION ?? DateTime.MinValue).ToList();
         _totalImporte = _lista.Sum(x => x.SUMA_IMPORTE);
         _totalTransaccion = _lista.Sum(x => x.SUMA_IMPORTE_TRNSACCION);
         _totalDiferencia = _lista.Sum(x => x.SUMA_DIFERENCIA);
         StateHasChanged();
+    }
+
+    private Task BuscarSegunModoActual()
+    {
+        return _modoConsulta switch
+        {
+            RutaModoConsulta.Mes => BuscarMes(),
+            RutaModoConsulta.Diario => FiltrarSobreCacheDiaria(),
+            _ => BuscarSemana()
+        };
     }
 
     private Task<TableData<VentaRutaDTO>> LoadServerData(TableState state, CancellationToken token)
@@ -601,6 +683,47 @@
     {
         var t = new string((s ?? string.Empty).Where(ch => char.IsLetter(ch) || char.IsWhiteSpace(ch)).Take(20).ToArray());
         return t.ToUpperInvariant();
+    }
+
+    private static (string serie, string corr) SplitDigits(string s)
+    {
+        var d = Regex.Replace(s ?? string.Empty, "[^0-9]", string.Empty);
+        var serie = d.Length >= 4 ? d.Substring(0, 4) : d;
+        var corr = d.Length > 4 ? d.Substring(4) : string.Empty;
+        return (serie, corr);
+    }
+
+    private static DateTime ObtenerInicioSemanaOperativa()
+        => DateTime.Today.AddDays(-7);
+
+    private static DateTime ObtenerFinSemanaOperativa()
+        => DateTime.Today.AddTicks(-1);
+
+    private static bool EstaFechaDentroDeSemanaOperativa(DateTime fecha)
+        => fecha.Date >= ObtenerInicioSemanaOperativa().Date && fecha.Date < DateTime.Today;
+
+    private static DateTime ObtenerInicioVentanaMensual()
+    {
+        var today = DateTime.Today;
+        var inicioMesActual = new DateTime(today.Year, today.Month, 1);
+        return inicioMesActual.AddMonths(-1);
+    }
+
+    private static DateTime ObtenerFinVentanaMensual()
+    {
+        var today = DateTime.Today;
+        var inicioMesSiguiente = new DateTime(today.Year, today.Month, 1).AddMonths(1);
+        return inicioMesSiguiente.AddTicks(-1);
+    }
+
+    private (DateTime? inicio, DateTime? fin) ObtenerRangoActual()
+    {
+        return _modoConsulta switch
+        {
+            RutaModoConsulta.Mes => (ObtenerInicioVentanaMensual(), ObtenerFinVentanaMensual()),
+            RutaModoConsulta.Semana => (ObtenerInicioSemanaOperativa(), ObtenerFinSemanaOperativa()),
+            _ => (null, null)
+        };
     }
 
     private static string? NormalizarMetodoPago(string? metodoPago)
