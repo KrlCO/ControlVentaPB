@@ -94,7 +94,7 @@ namespace Control_Ventas_PeruBus.Data.Repository
             using var conn = new SqlConnection(connStr);
             var sw = Stopwatch.StartNew();
             var rows = await conn.QueryAsync(
-                "SP_CONTROL_VENTA_RUTA_Q01_DIA",
+                "SP_CONTROL_VENTA_RUTA_Q01_DIA_TEST",
                 new { Usuario = usuario?.Trim() },
                 commandType: CommandType.StoredProcedure,
                 commandTimeout: 180);
