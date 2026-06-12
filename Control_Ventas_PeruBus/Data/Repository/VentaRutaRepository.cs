@@ -179,6 +179,41 @@ namespace Control_Ventas_PeruBus.Data.Repository
                     }
                 }
 
+                DateTime? horaEmision = null;
+                if (dict.TryGetValue("HORA_EMISION", out var hev) || dict.TryGetValue("HORA EMISION", out hev))
+                {
+                    switch (hev)
+                    {
+                        case DateTime dte:
+                            horaEmision = dte;
+                            break;
+                        case string she when !string.IsNullOrWhiteSpace(she):
+                            if (DateTime.TryParseExact(she, "yyyy-MM-dd HHmmss", CultureInfo.InvariantCulture, DateTimeStyles.None, out var e1))
+                                horaEmision = e1;
+                            else if (DateTime.TryParseExact(she, "yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture, DateTimeStyles.None, out var e2))
+                                horaEmision = e2;
+                            else if (DateTime.TryParseExact(she, "yyyy-MM-dd HH:mm:ss.fff", CultureInfo.InvariantCulture, DateTimeStyles.None, out var e2f))
+                                horaEmision = e2f;
+                            else if (DateTime.TryParseExact(she, "dd/MM/yyyy HH:mm:ss", CultureInfo.InvariantCulture, DateTimeStyles.None, out var e3))
+                                horaEmision = e3;
+                            else if (DateTime.TryParseExact(she, "dd/MM/yyyy HH:mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out var e4))
+                                horaEmision = e4;
+                            else if (DateTime.TryParseExact(she, "yyyyMMdd HH:mm:ss", CultureInfo.InvariantCulture, DateTimeStyles.None, out var e5))
+                                horaEmision = e5;
+                            else if (DateTime.TryParseExact(she, "yyyyMMdd HHmmss", CultureInfo.InvariantCulture, DateTimeStyles.None, out var e6))
+                                horaEmision = e6;
+                            else if (DateTime.TryParseExact(she, "dd-MM-yyyy HH:mm:ss", CultureInfo.InvariantCulture, DateTimeStyles.None, out var e7))
+                                horaEmision = e7;
+                            else if (DateTime.TryParseExact(she, "yyyy-MM-ddTHH:mm:ss", CultureInfo.InvariantCulture, DateTimeStyles.None, out var e8))
+                                horaEmision = e8;
+                            else if (DateTime.TryParseExact(she, "yyyy-MM-ddTHH:mm:ss.fff", CultureInfo.InvariantCulture, DateTimeStyles.None, out var e8f))
+                                horaEmision = e8f;
+                            else if (DateTime.TryParse(she, CultureInfo.InvariantCulture, DateTimeStyles.AllowWhiteSpaces, out var e9))
+                                horaEmision = e9;
+                            break;
+                    }
+                }
+
                 decimal ToDec(string key)
                 {
                     var s = dict.TryGetValue(key, out var v) ? v?.ToString() ?? "0" : "0";
@@ -201,6 +236,7 @@ namespace Control_Ventas_PeruBus.Data.Repository
                     USUARIO = dict.TryGetValue("USUARIO", out var usr) ? usr?.ToString() ?? string.Empty : string.Empty,
                     FECHA_LIQUIDACION = fecha,
                     FECHA_PROCESO = dict.TryGetValue("FECHA_PROCESO", out var fp) && fp is DateTime fpd ? fpd : (DateTime?)null,
+                    HORA_EMISION = horaEmision,
                     HORA_TRANSACCION = horaTrans,
                     SUMA_IMPORTE = ToDec("SUMA IMPORTE"),
                     SUMA_IMPORTE_TRNSACCION = ToDec("SUMA IMPORTE TRNSACCION"),
@@ -209,7 +245,7 @@ namespace Control_Ventas_PeruBus.Data.Repository
                 list.Add(dto);
             }
             list = list
-                .Where(x => RutaOperacionWindow.Contains(x.FECHA_LIQUIDACION ?? x.HORA_TRANSACCION))
+                .Where(x => RutaOperacionWindow.Contains(x.FECHA_LIQUIDACION ?? x.HORA_EMISION ?? x.HORA_TRANSACCION))
                 .ToList();
             _logger.LogInformation("[Repo] SP diario usuario='{Usuario}' tiempo={Ms}ms filas={Count} (conn={Conn})", usuario, sw.ElapsedMilliseconds, list.Count, connStr);
             return list;
@@ -231,6 +267,7 @@ namespace Control_Ventas_PeruBus.Data.Repository
                     USUARIO,
                     FECHA_LIQUIDACION,
                     FECHA_PROCESO,
+                    HORA_EMISION,
                     HORA_TRANSACCION,
                     [SUMA IMPORTE] AS SUMA_IMPORTE,
                     [SUMA IMPORTE TRNSACCION] AS SUMA_IMPORTE_TRNSACCION,
@@ -380,6 +417,40 @@ namespace Control_Ventas_PeruBus.Data.Repository
                             break;
                     }
                 }
+                DateTime? horaEmision = null;
+                if (dict.TryGetValue("HORA_EMISION", out var hev))
+                {
+                    switch (hev)
+                    {
+                        case DateTime dte:
+                            horaEmision = dte;
+                            break;
+                        case string she when !string.IsNullOrWhiteSpace(she):
+                            if (DateTime.TryParseExact(she, "yyyy-MM-dd HHmmss", CultureInfo.InvariantCulture, DateTimeStyles.None, out var e1))
+                                horaEmision = e1;
+                            else if (DateTime.TryParseExact(she, "yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture, DateTimeStyles.None, out var e2))
+                                horaEmision = e2;
+                            else if (DateTime.TryParseExact(she, "yyyy-MM-dd HH:mm:ss.fff", CultureInfo.InvariantCulture, DateTimeStyles.None, out var e2f))
+                                horaEmision = e2f;
+                            else if (DateTime.TryParseExact(she, "dd/MM/yyyy HH:mm:ss", CultureInfo.InvariantCulture, DateTimeStyles.None, out var e3))
+                                horaEmision = e3;
+                            else if (DateTime.TryParseExact(she, "dd/MM/yyyy HH:mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out var e4))
+                                horaEmision = e4;
+                            else if (DateTime.TryParseExact(she, "yyyyMMdd HH:mm:ss", CultureInfo.InvariantCulture, DateTimeStyles.None, out var e5))
+                                horaEmision = e5;
+                            else if (DateTime.TryParseExact(she, "yyyyMMdd HHmmss", CultureInfo.InvariantCulture, DateTimeStyles.None, out var e6))
+                                horaEmision = e6;
+                            else if (DateTime.TryParseExact(she, "dd-MM-yyyy HH:mm:ss", CultureInfo.InvariantCulture, DateTimeStyles.None, out var e7))
+                                horaEmision = e7;
+                            else if (DateTime.TryParseExact(she, "yyyy-MM-ddTHH:mm:ss", CultureInfo.InvariantCulture, DateTimeStyles.None, out var e8))
+                                horaEmision = e8;
+                            else if (DateTime.TryParseExact(she, "yyyy-MM-ddTHH:mm:ss.fff", CultureInfo.InvariantCulture, DateTimeStyles.None, out var e8f))
+                                horaEmision = e8f;
+                            else if (DateTime.TryParse(she, CultureInfo.InvariantCulture, DateTimeStyles.AllowWhiteSpaces, out var e9))
+                                horaEmision = e9;
+                            break;
+                    }
+                }
 
                 decimal ToDec(string key)
                 {
@@ -404,6 +475,7 @@ namespace Control_Ventas_PeruBus.Data.Repository
                     USUARIO = dict.TryGetValue("USUARIO", out var usr) ? usr?.ToString() ?? string.Empty : string.Empty,
                     FECHA_LIQUIDACION = fecha,
                     FECHA_PROCESO = fechaProceso,
+                    HORA_EMISION = horaEmision,
                     HORA_TRANSACCION = horaTrans,
                     SUMA_IMPORTE = ToDec("SUMA_IMPORTE"),
                     SUMA_IMPORTE_TRNSACCION = ToDec("SUMA_IMPORTE_TRNSACCION"),

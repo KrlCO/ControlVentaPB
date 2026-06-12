@@ -17,6 +17,7 @@ namespace Control_Ventas_PeruBus.Models.DTOs
         public string USUARIO { get; set; } = string.Empty;
         public DateTime? FECHA_LIQUIDACION { get; set; }
         [Column("FECHA_PROCESO")] public DateTime? FECHA_PROCESO { get; set; }
+        [Column("HORA_EMISION")] public DateTime? HORA_EMISION { get; set; }
         [Column("HORA_TRANSACCION")] public DateTime? HORA_TRANSACCION { get; set; }
         [Column("SUMA IMPORTE")] public decimal SUMA_IMPORTE { get; set; }
         [Column("SUMA IMPORTE TRNSACCION")] public decimal SUMA_IMPORTE_TRNSACCION { get; set; }

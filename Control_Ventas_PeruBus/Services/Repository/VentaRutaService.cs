@@ -159,7 +159,7 @@ namespace Control_Ventas_PeruBus.Services.Repository
                 var end = start.AddDays(1);
                 query = query.Where(x =>
                 {
-                    var d = x.FECHA_LIQUIDACION ?? x.FECHA_PROCESO;
+                    var d = x.FECHA_LIQUIDACION;
                     if (!d.HasValue) return false;
                     var v = d.Value;
                     return v >= start && v < end;
@@ -168,7 +168,7 @@ namespace Control_Ventas_PeruBus.Services.Repository
             }
 
             var list = query
-                .OrderByDescending(x => x.FECHA_LIQUIDACION ?? x.FECHA_PROCESO ?? DateTime.MinValue)
+                .OrderByDescending(x => x.FECHA_LIQUIDACION ?? DateTime.MinValue)
                 .ToList();
             _logger.LogInformation("[Service] Resultado del repositorio: {Count} filas", list.Count());
             return list;
