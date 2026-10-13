@@ -279,8 +279,11 @@ namespace Control_Ventas_PeruBus.Data.Repository
 
             if (!string.IsNullOrWhiteSpace(usuario))
             {
-                conditions.Add("UPPER(RTRIM(LTRIM(USUARIO))) = UPPER(@Usuario)");
-                param.Add("Usuario", usuario.Trim());
+                // Comparacion directa y parametro varchar para que SQL Server pueda usar
+                // un indice por USUARIO. La columna es varchar y la intercalacion no
+                // distingue mayusculas; un parametro nvarchar obligaria a recorrer la tabla.
+                conditions.Add("USUARIO = @Usuario");
+                param.Add("Usuario", usuario.Trim(), DbType.AnsiString, size: 50);
             }
 
 
@@ -298,26 +301,26 @@ namespace Control_Ventas_PeruBus.Data.Repository
 
             if (fechaLiquidacion.HasValue)
             {
-                conditions.Add("CAST(COALESCE(FECHA_LIQUIDACION, FECHA_PROCESO) AS DATE) = @FechaLiquidacion");
+                conditions.Add("CAST(FECHA_LIQUIDACION AS DATE) = @FechaLiquidacion");
                 param.Add("FechaLiquidacion", fechaLiquidacion.Value.Date);
             }
 
             if (fechainicio.HasValue)
             {
-                conditions.Add("COALESCE(FECHA_LIQUIDACION, FECHA_PROCESO) >= @FechaInicio");
+                conditions.Add("FECHA_LIQUIDACION >= @FechaInicio");
                 param.Add("FechaInicio", fechainicio.Value);
             }
 
             if (fechafin.HasValue)
             {
-                conditions.Add("COALESCE(FECHA_LIQUIDACION, FECHA_PROCESO) <= @FechaFin");
+                conditions.Add("FECHA_LIQUIDACION <= @FechaFin");
                 param.Add("FechaFin", fechafin.Value);
             }
 
             if (conditions.Count > 0)
                 sql += " WHERE " + string.Join(" AND ", conditions);
 
-            sql += " ORDER BY COALESCE(FECHA_LIQUIDACION, FECHA_PROCESO) DESC;";
+            sql += " ORDER BY FECHA_LIQUIDACION DESC, HORA_EMISION DESC, DOCUMENTO DESC;";
 
             using var conn = new SqlConnection(_connectionString);
             var rows = await conn.QueryAsync(sql, param, commandType: CommandType.Text, commandTimeout: 180);

@@ -126,11 +126,16 @@
         <MudButton Variant="Variant.Outlined" Color="Color.Info" Disabled="@(!_lista?.Any() ?? true)" OnClick="ExportarXlsx">Exportar excel</MudButton>
     </MudStack>
 
-    @if (_cargando)
-    {
-        <MudProgressCircular Class="mt-4" Indeterminate="true" Color="Color.Primary" />
-    }
-    else if (_lista != null && _lista.Any())
+    <MudOverlay Visible="@_mostrarModalCarga" DarkBackground="true" ZIndex="2000" AutoClose="false">
+        <MudPaper Elevation="8" Class="pa-6">
+            <MudStack Spacing="2" AlignItems="AlignItems.Center">
+                <MudProgressCircular Indeterminate="true" Color="Color.Primary" Size="Size.Large" />
+                <MudText Typo="Typo.h6" Align="Align.Center">Procesando información. Esta operación puede tardar entre 1 y 2 minutos dependiendo del volumen de datos. Por favor, espera.</MudText>
+            </MudStack>
+        </MudPaper>
+    </MudOverlay>
+
+    @if (_lista != null && _lista.Any())
     {
         <MudTable T="VentaRutaDTO" @ref="_tabla" ServerData="LoadServerData" Dense="true" Hover="true" Striped="true" Class="mt-4 ventas-ruta-table" RowsPerPage="@_rowsPerPage">
 
@@ -201,7 +206,7 @@
 
         </MudTable>
     }
-    else if (_lista != null && !_lista.Any())
+    else if (!_cargando && _lista != null && !_lista.Any())
     {
         <MudText Class="mt-4" Typo="Typo.subtitle2">Sin resultados</MudText>
     }
@@ -232,6 +237,7 @@
     private DateTime? _fechaLiquidacion;
     private IEnumerable<VentaRutaDTO>? _lista;
     private bool _cargando;
+    private bool _mostrarModalCarga;
     private CancellationTokenSource? _debounceCts;
     private int _clicks;
     private int _rowsPerPage = 500;
@@ -391,13 +397,23 @@
         return Task.CompletedTask;
     }
 
-    private async Task Buscar()
+    private Task Buscar()
+    {
+        return EjecutarBusquedaMensualAsync(mostrarModalCarga: true, limpiarFiltrosDeLiquidacion: true);
+    }
+
+    private async Task BuscarSilencioso()
+    {
+        await EjecutarBusquedaMensualAsync(mostrarModalCarga: false, limpiarFiltrosDeLiquidacion: false);
+    }
+
+    private async Task EjecutarBusquedaMensualAsync(bool mostrarModalCarga, bool limpiarFiltrosDeLiquidacion)
     {
         Logger.LogInformation("[UI] Click Buscar. Usuario='{Usuario}'", _usuario ?? "<null>");
         if (string.IsNullOrWhiteSpace(_usuario))
         {
             Logger.LogWarning("[UI] Buscar cancelado: usuario vacío");
-            Snackbar.Add("Ingrese un usuario", Severity.Warning);
+            Snackbar.Add("Ingresa un usuario", Severity.Warning);
             return;
         }
         if (_cargando)
@@ -408,25 +424,36 @@
         }
 
         SalirDeCacheDiaria();
+        var filtrosReiniciados = limpiarFiltrosDeLiquidacion && LimpiarFiltrosDeLiquidacion();
         _cargando = true;
+        _mostrarModalCarga = mostrarModalCarga;
         Logger.LogInformation("[UI] Buscando... usuario='{Usuario}'", _usuario);
-        Snackbar.Add("Buscando...", Severity.Info);
+        // Snackbar.Add("Buscando...", Severity.Info);
+        if (filtrosReiniciados)
+            Snackbar.Add("Se limpiaron los filtros.", Severity.Info);
         StateHasChanged();
-        var metodoArg = string.IsNullOrWhiteSpace(_metodoPago) ? null : _metodoPago!.Trim().ToUpperInvariant();
-        var empresaArg = _empresa?.Trim();
-        _lista = await VentaRutaService.ObtenerVentasAsync(_usuario?.Trim(), empresaArg, null, null, null, _liquidacion?.Trim(), metodoArg, _fechaLiquidacion);
-        _lista = _lista?.OrderByDescending(x => x.FECHA_LIQUIDACION ?? DateTime.MinValue).ToList();
-        _totalImporte = _lista?.Sum(x => x.SUMA_IMPORTE) ?? 0m;
-        _totalTransaccion = _lista?.Sum(x => x.SUMA_IMPORTE_TRNSACCION) ?? 0m;
-        _totalDiferencia = _lista?.Sum(x => x.SUMA_DIFERENCIA) ?? 0m;
-        _cargando = false;
-        Logger.LogInformation("[UI] Datos recibidos: {Count} filas", _lista?.Count() ?? -1);
-        if (_lista is null || !_lista.Any())
+        try
         {
-            Snackbar.Add("Sin resultados", Severity.Info);
+            var metodoArg = string.IsNullOrWhiteSpace(_metodoPago) ? null : _metodoPago!.Trim().ToUpperInvariant();
+            var empresaArg = _empresa?.Trim();
+            _lista = await VentaRutaService.ObtenerVentasAsync(_usuario?.Trim(), empresaArg, null, null, null, _liquidacion?.Trim(), metodoArg, _fechaLiquidacion);
+            _lista = _lista?.OrderByDescending(x => x.FECHA_LIQUIDACION ?? DateTime.MinValue).ToList();
+            _totalImporte = _lista?.Sum(x => x.SUMA_IMPORTE) ?? 0m;
+            _totalTransaccion = _lista?.Sum(x => x.SUMA_IMPORTE_TRNSACCION) ?? 0m;
+            _totalDiferencia = _lista?.Sum(x => x.SUMA_DIFERENCIA) ?? 0m;
+            Logger.LogInformation("[UI] Datos recibidos: {Count} filas", _lista?.Count() ?? -1);
+            // if (_lista is null || !_lista.Any())
+            // {
+            //     Snackbar.Add("Sin resultados", Severity.Info);
+            // }
+            await RecargarTablaAsync();
         }
-        await RecargarTablaAsync();
-        StateHasChanged();
+        finally
+        {
+            _cargando = false;
+            _mostrarModalCarga = false;
+            StateHasChanged();
+        }
     }
 
     private async Task BuscarDiario()
@@ -434,7 +461,7 @@
         Logger.LogInformation("[UI] Click Diario. Usuario='{Usuario}'", _usuario ?? "<null>");
         if (string.IsNullOrWhiteSpace(_usuario))
         {
-            Snackbar.Add("Ingrese un usuario", Severity.Warning);
+            Snackbar.Add("Ingresa un usuario", Severity.Warning);
             return;
         }
         if (_cargando)
@@ -442,16 +469,27 @@
             Snackbar.Add("Carga en curso...", Severity.Info);
             return;
         }
+        var filtrosReiniciados = LimpiarFiltrosDeLiquidacion();
         _cargando = true;
-        Snackbar.Add("Buscando diario...", Severity.Info);
+        _mostrarModalCarga = true;
+        // Snackbar.Add("Buscando diario...", Severity.Info);
+        if (filtrosReiniciados)
+            Snackbar.Add("Se limpiaron los filtros.", Severity.Info);
         StateHasChanged();
-        var baseList = await VentaRutaService.ObtenerVentasDiariasAsync(_usuario.Trim());
-        _listaBaseDiaria = baseList?.ToList();
-        _usuarioCacheDiaria = _usuario?.Trim();
-        _usarCacheDiaria = true;
-        await FiltrarSobreCacheDiaria();
-        _cargando = false;
-        StateHasChanged();
+        try
+        {
+            var baseList = await VentaRutaService.ObtenerVentasDiariasAsync(_usuario.Trim());
+            _listaBaseDiaria = baseList?.ToList();
+            _usuarioCacheDiaria = _usuario?.Trim();
+            _usarCacheDiaria = true;
+            await FiltrarSobreCacheDiaria();
+        }
+        finally
+        {
+            _cargando = false;
+            _mostrarModalCarga = false;
+            StateHasChanged();
+        }
     }
 
     private void OnFiltroKeyUp(KeyboardEventArgs _)
@@ -507,7 +545,7 @@
                         Logger.LogInformation("[UI] Debounce cambia de usuario: sale de cache diario y ejecuta Buscar");
                     }
                     Logger.LogInformation("[UI] Debounce ejecuta Buscar");
-                    await InvokeAsync(Buscar);
+                    await InvokeAsync(BuscarSilencioso);
                 }
             }
             catch (TaskCanceledException) { }
@@ -544,11 +582,14 @@
 
     private string? _usuarioCacheDiaria;
 
+    private DateTime? _ultimaFechaAdvertidaFueraDeRangoDiario;
+
     private void SalirDeCacheDiaria()
     {
         _usarCacheDiaria = false;
         _listaBaseDiaria = null;
         _usuarioCacheDiaria = null;
+        _ultimaFechaAdvertidaFueraDeRangoDiario = null;
     }
 
     private async Task FiltrarSobreCacheDiaria()
@@ -573,8 +614,31 @@
             query = query.Where(x => EsMetodoNoEfectivo(x.METODO_PAGO));
         else if (!string.Equals(metodoPagoNormalizado, "TODOS", StringComparison.OrdinalIgnoreCase))
             query = query.Where(x => string.Equals((x.METODO_PAGO ?? string.Empty).Trim(), metodoPagoNormalizado, StringComparison.OrdinalIgnoreCase));
+        var listaBaseFiltrada = query.ToList();
         if (_fechaLiquidacion.HasValue)
-            query = query.Where(x => (x.FECHA_LIQUIDACION?.Date ?? DateTime.MinValue.Date) == _fechaLiquidacion.Value.Date);
+        {
+            var fechaBuscada = _fechaLiquidacion.Value.Date;
+            var fechaDisponible = listaBaseFiltrada.Any(x => x.FECHA_LIQUIDACION?.Date == fechaBuscada);
+            if (!fechaDisponible)
+            {
+                _lista = Array.Empty<VentaRutaDTO>();
+                _totalImporte = 0m;
+                _totalTransaccion = 0m;
+                _totalDiferencia = 0m;
+                await RecargarTablaAsync();
+                MostrarAdvertenciaFechaFueraDeRangoDiario(fechaBuscada);
+                StateHasChanged();
+                return;
+            }
+
+            query = listaBaseFiltrada.Where(x => (x.FECHA_LIQUIDACION?.Date ?? DateTime.MinValue.Date) == fechaBuscada);
+            _ultimaFechaAdvertidaFueraDeRangoDiario = null;
+        }
+        else
+        {
+            _ultimaFechaAdvertidaFueraDeRangoDiario = null;
+            query = listaBaseFiltrada;
+        }
 
         _lista = query.OrderByDescending(x => x.FECHA_LIQUIDACION ?? DateTime.MinValue).ToList();
         _totalImporte = _lista.Sum(x => x.SUMA_IMPORTE);
@@ -624,6 +688,32 @@
         DebounceBuscar();
         StateHasChanged();
     }
+
+    private bool LimpiarFiltrosDeLiquidacion()
+    {
+        var huboCambios = _fechaLiquidacion.HasValue
+            || !string.IsNullOrWhiteSpace(_serieLiquidacion)
+            || !string.IsNullOrWhiteSpace(_correlativoLiquidacion)
+            || !string.IsNullOrWhiteSpace(_liquidacion)
+            || !string.IsNullOrWhiteSpace(_liquidacionBound);
+
+        _fechaLiquidacion = null;
+        _serieLiquidacion = string.Empty;
+        _correlativoLiquidacion = string.Empty;
+        _liquidacion = string.Empty;
+        _liquidacionBound = string.Empty;
+
+        return huboCambios;
+    }
+
+    private void MostrarAdvertenciaFechaFueraDeRangoDiario(DateTime fechaBuscada)
+    {
+        if (_ultimaFechaAdvertidaFueraDeRangoDiario == fechaBuscada)
+            return;
+
+        _ultimaFechaAdvertidaFueraDeRangoDiario = fechaBuscada;
+        Snackbar.Add("Estas buscando liquidaciones de fechas anteriores. Usa Liquidaciones 30 dias o recarga la pagina para ver todas tus liquidaciones.", Severity.Warning);
+    }
  
     private static string SanitizeUsuario(string? s)
     {
@@ -663,12 +753,12 @@
 
     private static DateTime? ObtenerFechaLiquidacionBase(VentaRutaDTO venta)
     {
-        return venta.FECHA_LIQUIDACION ?? venta.HORA_EMISION ?? venta.FECHA_PROCESO ?? venta.HORA_TRANSACCION;
+        return venta.FECHA_LIQUIDACION ?? venta.HORA_EMISION ?? venta.HORA_TRANSACCION;
     }
 
     private static DateTime? ObtenerFechaOperacionBase(VentaRutaDTO venta)
     {
-        return venta.FECHA_LIQUIDACION ?? venta.HORA_EMISION ?? venta.FECHA_PROCESO ?? venta.HORA_TRANSACCION;
+        return venta.FECHA_LIQUIDACION ?? venta.HORA_EMISION ?? venta.HORA_TRANSACCION;
     }
 
     private async Task RecargarTablaAsync()

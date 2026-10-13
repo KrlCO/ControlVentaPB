@@ -63,7 +63,7 @@ namespace Control_Ventas_PeruBus.Controllers
                 }
                 else
                 {
-                    query = query.Where(x => RutaOperacionWindow.Contains(x.FECHA_LIQUIDACION ?? x.HORA_EMISION ?? x.FECHA_PROCESO ?? x.HORA_TRANSACCION));
+                    query = query.Where(x => RutaOperacionWindow.Contains(x.FECHA_LIQUIDACION ?? x.HORA_EMISION ?? x.HORA_TRANSACCION));
                 }
                 list = query.OrderByDescending(x => x.FECHA_LIQUIDACION ?? DateTime.MinValue).ToList();
             }
