@@ -10,6 +10,8 @@ namespace Control_Ventas_PeruBus.Services.Repository
     public class VentaRutaService : IVentaRutaService
     {
         private const string AllCacheKey = "ventaruta:all";
+        // Dias hacia atras que carga "Liquidaciones 30 dias" cuando no se indica un rango.
+        private const int DiasVentanaMensual = 30;
         private static readonly SemaphoreSlim _allCacheLock = new(1, 1);
         private readonly IVentaRutaRepository _repository;
         private readonly IMemoryCache _cache;
@@ -68,6 +70,24 @@ namespace Control_Ventas_PeruBus.Services.Repository
             {
                 _logger.LogInformation("[Service] Se devuelve desde cache: {Count} filas", cached.Count());
                 return cached;
+            }
+
+            // Sin rango explicito, la consulta se limita a la ventana mensual. La tabla de
+            // cache acumula todo el historial, asi que sin este limite se traian todas
+            // las liquidaciones del usuario desde el inicio. Si se filtra por una fecha
+            // de liquidacion puntual, se pide solo ese dia (aunque sea anterior a la ventana).
+            if (!sinFiltros && inicio is null && fin is null)
+            {
+                if (fechaLiquidacion.HasValue)
+                {
+                    inicio = fechaLiquidacion.Value.Date;
+                    fin = inicio;
+                }
+                else
+                {
+                    inicio = DateTime.Today.AddDays(-DiasVentanaMensual);
+                }
+                _logger.LogInformation("[Service] Ventana aplicada: inicio='{Inicio}', fin='{Fin}'", inicio?.ToString("yyyy-MM-dd") ?? "<null>", fin?.ToString("yyyy-MM-dd") ?? "<null>");
             }
 
             IEnumerable<VentaRutaDTO>? ventas;
@@ -159,7 +179,7 @@ namespace Control_Ventas_PeruBus.Services.Repository
                 var end = start.AddDays(1);
                 query = query.Where(x =>
                 {
-                    var d = x.FECHA_LIQUIDACION ?? x.FECHA_PROCESO;
+                    var d = x.FECHA_LIQUIDACION;
                     if (!d.HasValue) return false;
                     var v = d.Value;
                     return v >= start && v < end;
@@ -168,7 +188,7 @@ namespace Control_Ventas_PeruBus.Services.Repository
             }
 
             var list = query
-                .OrderByDescending(x => x.FECHA_LIQUIDACION ?? x.FECHA_PROCESO ?? DateTime.MinValue)
+                .OrderByDescending(x => x.FECHA_LIQUIDACION ?? DateTime.MinValue)
                 .ToList();
             _logger.LogInformation("[Service] Resultado del repositorio: {Count} filas", list.Count());
             return list;

@@ -59,11 +59,11 @@ namespace Control_Ventas_PeruBus.Controllers
                 if (fechaLiquidacion.HasValue)
                 {
                     var d = fechaLiquidacion.Value.Date;
-                    query = query.Where(x => (x.FECHA_LIQUIDACION?.Date ?? x.FECHA_PROCESO?.Date ?? DateTime.MinValue.Date) == d);
+                    query = query.Where(x => (x.FECHA_LIQUIDACION?.Date ?? DateTime.MinValue.Date) == d);
                 }
                 else
                 {
-                    query = query.Where(x => RutaOperacionWindow.Contains(x.FECHA_LIQUIDACION ?? x.FECHA_PROCESO ?? x.HORA_TRANSACCION));
+                    query = query.Where(x => RutaOperacionWindow.Contains(x.FECHA_LIQUIDACION ?? x.HORA_EMISION ?? x.HORA_TRANSACCION));
                 }
                 list = query.OrderByDescending(x => x.FECHA_LIQUIDACION ?? DateTime.MinValue).ToList();
             }
@@ -78,7 +78,7 @@ namespace Control_Ventas_PeruBus.Controllers
             var empresaNombre = (empresa?.Trim()) switch { "39" => "EXPRESO SUR BUS", _ => "PERU BUS" };
             var windowEnd = RutaOperacionWindow.GetWindowEnd();
             var windowStart = RutaOperacionWindow.GetWindowStart(windowEnd);
-            var headers = new[] { "DOCUMENTO", "ORIGEN", "DESTINO", "LIQUIDACION", "FECHA LIQUIDACION", "METODO PAGO", "SUMA IMPORTE", "SUMA IMPORTE TRNSACCION", "SUMA DIFERENCIA", "BUS", "ID TRANSACCION", "HORA TRANSACCION" };
+            var headers = new[] { "DOCUMENTO", "ORIGEN", "DESTINO", "LIQUIDACION", "FECHA LIQUIDACION", "METODO PAGO", "SUMA IMPORTE", "SUMA IMPORTE TRNSACCION", "SUMA DIFERENCIA", "BUS", "ID TRANSACCION", "HORA EMISION", "HORA TRANSACCION" };
             const int titleRow = 1;
             const int headerRow = 7;
             const int dataStartRow = 8;
@@ -117,14 +117,15 @@ namespace Control_Ventas_PeruBus.Controllers
                 ws.Cell(row, 2).Value = v.ORIGEN;
                 ws.Cell(row, 3).Value = v.DESTINO;
                 ws.Cell(row, 4).Value = v.LIQUIDACION;
-                ws.Cell(row, 5).Value = v.FECHA_LIQUIDACION ?? v.FECHA_PROCESO;
+                ws.Cell(row, 5).Value = v.FECHA_LIQUIDACION;
                 ws.Cell(row, 6).Value = v.METODO_PAGO;
                 ws.Cell(row, 7).Value = v.SUMA_IMPORTE;
                 ws.Cell(row, 8).Value = v.SUMA_IMPORTE_TRNSACCION;
                 ws.Cell(row, 9).Value = v.SUMA_DIFERENCIA;
                 ws.Cell(row, 10).Value = v.BUS;
                 ws.Cell(row, 11).Value = v.ID_TRANSACCION;
-                ws.Cell(row, 12).Value = v.HORA_TRANSACCION;
+                ws.Cell(row, 12).Value = v.HORA_EMISION;
+                ws.Cell(row, 13).Value = v.HORA_TRANSACCION;
                 row++;
             }
 
@@ -158,7 +159,8 @@ namespace Control_Ventas_PeruBus.Controllers
             ws.Column(7).Style.NumberFormat.Format = "#,##0.00";
             ws.Column(8).Style.NumberFormat.Format = "#,##0.00";
             ws.Column(9).Style.NumberFormat.Format = "#,##0.00";
-            ws.Column(12).Style.DateFormat.Format = "hh:mm";
+            ws.Column(12).Style.DateFormat.Format = "yyyy-MM-dd HH:mm";
+            ws.Column(13).Style.DateFormat.Format = "hh:mm";
             ws.Columns(7, 9).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
 
             using var ms = new MemoryStream();
@@ -208,5 +210,6 @@ namespace Control_Ventas_PeruBus.Controllers
             var normalized = (metodoPago ?? string.Empty).Trim().ToUpperInvariant();
             return !string.IsNullOrWhiteSpace(normalized) && !EsMetodoEfectivoRegistrado(normalized);
         }
+
     }
 }
